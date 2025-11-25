@@ -165,12 +165,12 @@ class Browser(QMainWindow):
         self.colourTheme_btn = ToolButton(self)
         self.colourTheme_btn.setToolTip("ColourTheme")
         self.colourTheme_btn.setText("Colour Themes")
-        self.colourTheme_btn.setIcon(get_normIcon("colourPallete", inv))
+        self.colourTheme_btn.setIcon(get_normIcon("colourPalette", inv))
 
         Cmenu = QMenu(self)
         with open (f"{Path(__file__).parent}/colourProfiles.json", 'r') as datafile:
-            colourPalletes = json.load(datafile)
-        for Name, data in colourPalletes.items():
+            colourPalettes = json.load(datafile)
+        for Name, data in colourPalettes.items():
             widget = QWidget()
             layout = QHBoxLayout(widget)
             layout.setContentsMargins(5, 2, 5, 2)
@@ -182,12 +182,12 @@ class Browser(QMainWindow):
             Cwidget_action = QWidgetAction(self)
             Cwidget_action.setDefaultWidget(widget)
             Cwidget_action.setData((Name, data))
-            Cwidget_action.triggered.connect(lambda checked, N = Name, d = data: self.setColourPallete(N, d))
+            Cwidget_action.triggered.connect(lambda checked, N = Name, d = data: self.setColourPalette(N, d))
             Cmenu.addAction(Cwidget_action)
         
         self.colourTheme_btn.setMenu(Cmenu)
         self.colourTheme_btn.setPopupMode(QToolButton.InstantPopup)
-        initial_pallette = [k for k, v in colourPalletes.items() if k[0] == inv]
+        initial_pallette = [k for k, v in colourPalettes.items() if k[0] == inv]
         nav_bar.addWidget(self.colourTheme_btn)
 
 
@@ -260,7 +260,7 @@ class Browser(QMainWindow):
 
         # colour wheel (QColorDialog)
         custom = QAction("Custom...", self)
-        custom.triggered.connect(lambda checked=False, b=RCButtonName: self.pick_button_colour(b))
+        custom.triggered.connect(lambda checked=False, b=self.RCButtonName: self.pick_button_colour(b))
         colour_menu.addAction(custom)
 
         menu.exec(btn.mapToGlobal(pos))
@@ -432,7 +432,7 @@ class Browser(QMainWindow):
     def setButtonColour(self, button, rgb):
         print(button)
         #recolour logic
-        print(f"Recoloring {button} with {rgb}")
+        print(f"Recolouring {button} with {rgb}")
         pass
 
     def pick_page_colour(self):
@@ -448,7 +448,7 @@ class Browser(QMainWindow):
         """
         self.current_browser.page().runJavaScript(js)
 
-    def setColourPallete(self, Name, data):
+    def setColourPalette(self, Name, data):
         pass
 
 

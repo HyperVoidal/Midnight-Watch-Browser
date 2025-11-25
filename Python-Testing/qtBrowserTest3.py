@@ -52,15 +52,6 @@ engines = {
 #starter engine
 engine = engines['brave'][0]
 
-def ButtonConstructor(name, tooltip, icon, link):
-    Browser.name = QToolButton(Browser)
-    Browser.name.setToolTip(tooltip)
-    Browser.name.setIcon(get_normIcon(icon, inv))
-    Browser.nav_bar.addWidget(Browser.name)
-    Browser.name.clicked.connect(Browser.current_browser.link)
-
-# call buttonconstructor as (example) back = ButtonConstructor("back_btn", "Back", "back", "back")
-
 class Browser(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -68,13 +59,16 @@ class Browser(QMainWindow):
         self.resize(1200, 800)
         self.url_bar = QLineEdit()
 
-        self.home_path = Path(__file__).parent / "homepage.html"
+        self.main_path = Path(__file__).parent
+        self.home_path = self.main_path / "homepage.html"
         self.tabs  = QTabWidget()
         self.tabs.setTabsClosable(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self.switch_tab)
         self.setCentralWidget(self.tabs)
         self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+
+        self.SelectedColourProfile = "profile1" #handle this more elegantly at some point
 
         self.nav_bar = QToolBar("Navigation")
         self.addToolBar(self.nav_bar)
@@ -89,7 +83,6 @@ class Browser(QMainWindow):
         self.ButtonConstructor("forward_btn", "Forward", "forward", "go_forward")
         self.ButtonConstructor("home_btn", "Home", "home", "go_home")
         self.ButtonConstructor("newtab_btn", "New Tab", "newtab", "new_tab")
-        self.ButtonConstructor("colourtheme_btn", "Colour Themes", "colourPallete", "colour_themes")
 
         #reload animation components
         self.rotation_angle = 0
@@ -97,6 +90,52 @@ class Browser(QMainWindow):
         self.rotation_timer.timeout.connect(self.rotate_reload_icon)
         self.current_browser.loadStarted.connect(self.start_reload_animation)
         self.current_browser.loadFinished.connect(self.stop_reload_animation)
+
+        #Colour palette systems
+        '''
+        Current plan is to steal the dropdown system from my engine selector ui and use it to select themes from a list
+        The list is extracted from colourProfiles.json and can be either cycled through by pressing the colourtheme button
+        OR clicking the dropdown to select a colour specifically. In the dropdown menu is also a final selector for customising 
+        colour palettes that opens the customiser UI and greys out and disables the buttons, allowing users to left click buttons
+        to select a colour for them.
+        '''
+        self.ColourPalette_btn = QToolButton(self)
+        self.ColourPalette_btn.setToolTip("Colour Palettes")
+        ColourMenu = QMenu(self)
+
+        with open (f"{self.main_path}/colourProfiles.json", "r") as f:
+            Colourdata = dict(json.load(f))
+        
+        for profile in range(len(Colourdata)):
+            dictions = [[k,v] for k,v in Colourdata.items()]
+            self.selectedprofile = str(dictions[profile][0])
+            # Widgets for Menu Items
+            Cwidget = QWidget()
+            Clayout = QHBoxLayout(Cwidget)
+            Clayout.setContentsMargins(5, 2, 5, 2)
+            Clayout.setSpacing(5)
+
+            #Add text
+            Ctext_label = QLabel(self.selectedprofile.capitalize())
+            Clayout.addWidget(Ctext_label)
+
+            #Create Widget Action
+            Cwidget_action = QWidgetAction(self)
+            Cwidget_action.setDefaultWidget(Cwidget)
+            Cwidget_action.setData((self.selectedprofile))
+            Cwidget_action.triggered.connect(lambda checked, p=self.selectedprofile, d=Colourdata: self.SelectColourTheme(p, d))
+            ColourMenu.addAction(Cwidget_action)
+        
+        self.ColourPalette_btn.setMenu(ColourMenu)
+        self.ColourPalette_btn.setIcon(get_normIcon("colourPalette", inv))
+
+        self.ColourPalette_btn.clicked.connect(lambda checked, p=self.selectedprofile, d=Colourdata: self.ToggleColourTheme(p, d))
+
+        self.ColourPalette_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        self.nav_bar.addWidget(self.ColourPalette_btn)
+        #define starter profile
+        self.selectedprofile = 'profile1'
+
 
         #engine system
         self.engine = engine
@@ -170,7 +209,6 @@ class Browser(QMainWindow):
     def go_forward(self): self.current_browser.forward()
     def go_home(self): self.current_browser.setUrl(QUrl.fromLocalFile(str(self.home_path)))
     def new_tab(self): self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
-    def colour_themes(self): print("TODO: toggle theme")
 
     #reload icon animations
     def rotate_reload_icon(self):
@@ -276,6 +314,22 @@ class Browser(QMainWindow):
         self.engine_btn.setText(key.capitalize())
         self.engine_btn.setToolTip(value)
         self.engine_btn.setIcon(get_favicon(key, engines[key][1]))
+    
+    def SelectColourTheme(self, profile, themes):
+        components = dict(themes[profile])
+        print(components)
+
+        pass
+
+    def ToggleColourTheme(self, profile, themes):
+        print(profile)
+        pass
+
+    
+
+    #system for when I implement the main colourtheme editor
+    def ColourThemeEditor(self):
+        pass
     
 if __name__ == "__main__":#
     app = QApplication(sys.argv)
