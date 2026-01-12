@@ -5,7 +5,10 @@
         "colourPalette_btn": "(255, 236, 209)",
         "newtab_btn": "(198, 223, 255)",
         "home_btn": "(255, 214, 235)",
-        "forward_btn": "(205, 245, 212)"
+        "forward_btn": "(205, 245, 212)",
+        "url_bar": "(0, 0, 0)",
+        "tabs": "(0, 0, 0",
+        "nav_bar": "(255, 190, 190)"
 
     },
     "Cyber Lime": { 
@@ -14,7 +17,10 @@
         "colourPalette_btn": "(190, 255, 0)",
         "newtab_btn": "(0, 255, 77)",
         "home_btn": "(84, 215, 43)",
-        "forward_btn": "(168, 255, 112)"
+        "forward_btn": "(168, 255, 112)",
+        "url_bar": "(100, 192, 100)",
+        "tabs": "(0, 0, 0",
+        "nav_bar": "(200, 255, 200)"
 
     }, 
     "Mint": {
@@ -23,7 +29,10 @@
         "colourPalette_btn": "(120, 235, 185)",
         "newtab_btn": "(150, 255, 210)",
         "home_btn": "(190, 255, 230)",
-        "forward_btn": "(160, 240, 200)"
+        "forward_btn": "(160, 240, 200)",
+        "url_bar": "(90, 150, 110)",
+        "tabs": "(0, 0, 0",
+        "nav_bar": "(10, 60, 20)"
     },
     "Solar": {
         "back_btn": "(255, 207, 72)",
@@ -31,7 +40,10 @@
         "colourPalette_btn": "(255, 153, 0)",
         "newtab_btn": "(255, 227, 112)",
         "home_btn": "(255, 239, 168)",
-        "forward_btn": "(255, 195, 66)"
+        "forward_btn": "(255, 195, 66)",
+        "url_bar": "(60, 30, 30)",
+        "tabs": "(0, 0, 0",
+        "nav_bar": "(100, 30, 30)"
     },
     "Coral": {
         "back_btn": "(255, 111, 97)",
@@ -39,24 +51,33 @@
         "colourPalette_btn": "(255, 176, 148)",
         "newtab_btn": "(255, 151, 117)",
         "home_btn": "(255, 199, 190)",
-        "forward_btn": "(255, 132, 105)"
+        "forward_btn": "(255, 132, 105)",
+        "url_bar": "(30, 15, 15)",
+        "tabs": "(0, 0, 0",
+        "nav_bar": "(75, 20, 15)"
     }, 
-    "Light Mode": { 
+    "Default Dark Mode": { 
         "back_btn": "(255, 255, 255)", 
         "reload_btn": "(255, 255, 255)", 
         "colourPalette_btn": "(255, 255, 255)", 
         "newtab_btn": "(255, 255, 255)", 
         "home_btn": "(255, 255, 255)", 
-        "forward_btn": "(255, 255, 255)"
+        "forward_btn": "(255, 255, 255)",
+        "url_bar": "(0, 0, 0)",
+        "tabs": "(0, 0, 0",
+        "nav_bar": "(70, 70, 70)"
 
     },
-    "Default Dark Mode": { 
-        "back_btn": "(0, 0, 0)", 
-        "reload_btn": "(0, 0, 0)", 
-        "colourPalette_btn": "(0, 0, 0)", 
-        "newtab_btn": "(0, 0, 0)", 
-        "home_btn": "(0, 0, 0)", 
-        "forward_btn": "(0, 0, 0)"
+    "Light Mode": { 
+        "back_btn": "(128, 128, 128)", 
+        "reload_btn": "(128, 128, 128)", 
+        "colourPalette_btn": "(128, 128, 128)", 
+        "newtab_btn": "(128, 128, 128)", 
+        "home_btn": "(128, 128, 128)", 
+        "forward_btn": "(128, 128, 128)",
+        "url_bar": "(128, 128, 128)",
+        "tabs": "(128, 128, 128",
+        "nav_bar": "(255, 255, 255)"
 
     }
 }

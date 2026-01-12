@@ -38,7 +38,27 @@ engine = 'brave'
 global eColsButton, eColsStyle
 eColsButton = []
 eColsStyle = []
+
+def clamp(value, min_value, max_value):
+    return max(min_value, min(value, max_value))
  
+def buttoncolourer(k, v):
+    name = (str(k).split("_btn"))[0]
+    filepath = (f"{icon_cache_dir}/{name}.png")
+    img = Image.open(filepath).convert('RGBA')
+    r, g, b, a = img.split() #only need 'a' value
+    #convert to white for better handling
+    white_img = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    mask_white = white_img.copy()
+    mask_white.putalpha(a)
+    #convert colour data into usable rgb tuple SAFELY - consider paramaterising this to avoid injection
+    vstrip = v.strip('()').split(',')
+    newv = tuple(int(i) for i in vstrip)
+    coloured = Image.new("RGBA", img.size, newv+(255,))
+    coloured.putalpha(a)
+    colouredpath = (f"{icon_cache_dir}/{name}.png")
+    coloured.save(colouredpath, format='PNG')
+    return colouredpath
 
 
 
@@ -68,7 +88,6 @@ class Browser(QMainWindow):
         self.nav_bar.setMovable(False)
         self.nav_bar.setStyleSheet("background:rgb(1, 1, 100)")
         eColsStyle.append("nav_bar")
-        
 
         #buttons
 
@@ -95,7 +114,7 @@ class Browser(QMainWindow):
         '''
         self.colourPalette_btn = QToolButton(self)
         self.colourPalette_btn.setToolTip("Colour Palettes")
-        ColourMenu = QMenu(self)
+        self.ColourMenu = QMenu(self)
 
         #define starter profile. Need to do this more elegantly at some point since the profile selection doesn't even start at this it's just a placeholder
         with open (f'{self.main_path}/data/userData.json', "r") as f:
@@ -123,7 +142,7 @@ class Browser(QMainWindow):
             Cwidget_action.setDefaultWidget(Cwidget)
             Cwidget_action.setData(key)
             Cwidget_action.triggered.connect(lambda checked, p=key, d=Colourdata: self.SelectColourTheme(p, d))
-            ColourMenu.addAction(Cwidget_action)
+            self.ColourMenu.addAction(Cwidget_action)
 
         #add more themes button append
         Awidget = QWidget()
@@ -138,10 +157,10 @@ class Browser(QMainWindow):
         Awidget_action.setDefaultWidget(Awidget)
         Awidget_action.setData("Add New Themes")
         Awidget_action.triggered.connect(self.ColourThemeEditor)
-        ColourMenu.addAction(Awidget_action)
+        self.ColourMenu.addAction(Awidget_action)
 
         
-        self.colourPalette_btn.setMenu(ColourMenu)
+        self.colourPalette_btn.setMenu(self.ColourMenu)
         self.colourPalette_btn.setIcon(get_normIcon("colourPalette"))
 
         # When the main button is clicked, read the current selectedprofile at click time
@@ -157,7 +176,7 @@ class Browser(QMainWindow):
         self.engine = engine
         self.engine_btn = QToolButton(self)
         self.engine_btn.setText("Search With...")
-        menu = QMenu(self)
+        self.browsermenu = QMenu(self)
 
         for key, search_url in engines.items():
             # Create widget for menu item
@@ -173,17 +192,18 @@ class Browser(QMainWindow):
             layout.addWidget(icon_label)
             
             # Add text
-            text_label = QLabel(key.capitalize())
+            text_label = QLabel(key.capitalize())   
+            text_label.setObjectName(f"browser_menu_text_label_{key}")
             layout.addWidget(text_label)
-            
+
             # Create QWidgetAction and set the custom widget
             widget_action = QWidgetAction(self)
             widget_action.setDefaultWidget(widget)
             widget_action.setData((key, search_url))
             widget_action.triggered.connect(lambda checked, k=key: self.set_engine(k))
-            menu.addAction(widget_action)
+            self.browsermenu.addAction(widget_action)
             
-        self.engine_btn.setMenu(menu)
+        self.engine_btn.setMenu(self.browsermenu)
         self.engine_btn.setIcon(QIcon(str(icon_cache_dir / f"{self.engine}")))
 
         self.engine_btn.clicked.connect(lambda: self.current_browser.setUrl(QUrl(engines[self.engine].split('/search?q=')[0])))
@@ -198,6 +218,9 @@ class Browser(QMainWindow):
         self.nav_bar.addWidget(self.url_bar)
 
         self.current_browser.urlChanged.connect((lambda q: self.url_bar.setText(q.toString())))
+
+        #final reset to styling to skip default selection
+        self.SelectColourTheme(self.selectedprofile, Colourdata)
 
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
         """Creates all buttons for navbar"""
@@ -321,13 +344,14 @@ class Browser(QMainWindow):
             print(fullurl)
         
         self.current_browser.setUrl(QUrl(fullurl))
-    
+
     def on_load_finished(self):
         pass
     
     def set_engine(self, key):
         global engine
         engine = key
+        self.engine = key
         self.engine_btn.setText(key.capitalize())
         self.engine_btn.setToolTip(key)
         self.engine_btn.setIcon(QIcon(str(icon_cache_dir / f"{key}")))
@@ -343,6 +367,16 @@ class Browser(QMainWindow):
         datalist = list((themes[profile]).items())
         print(datalist)
 
+        #adjust user profile colour selection
+        with open (f"{self.main_path}/data/userData.json", "r") as f:
+            dataedit = json.load(f)
+        (dict(dataedit["mainUser"]))["ColourProfile"] = profile
+        dataedit["mainUser"]["ColourProfile"] = profile
+        with open (f"{self.main_path}/data/userData.json", "w") as f:
+            json.dump(dataedit, f)
+
+            
+
         #recolour icons
         for k, v in datalist:
             if k in eColsButton:
@@ -350,35 +384,145 @@ class Browser(QMainWindow):
                 print(f"colourAdjust: {v}")
                 obj = getattr(self, k, None)
                 if obj is not None:
-                    name = (str(k).split("_btn"))[0]
-                    filepath = (f"{icon_cache_dir}/{name}.png")
-                    img = Image.open(filepath).convert('RGBA')
-                    r, g, b, a = img.split() #only need 'a' value
-                    #convert to white for better handling
-                    white_img = Image.new("RGBA", img.size, (255, 255, 255, 255))
-                    mask_white = white_img.copy()
-                    mask_white.putalpha(a)
-                    #convert colour data into usable rgb tuple SAFELY - consider paramaterising this to avoid injection
-                    vstrip = v.strip('()').split(',')
-                    newv = tuple(int(i) for i in vstrip)
-                    coloured = Image.new("RGBA", img.size, newv+(255,))
-                    coloured.putalpha(a)
-                    colouredpath = (f"{icon_cache_dir}/{name}.png")
-                    coloured.save(colouredpath, format='PNG')
+                    colouredpath = buttoncolourer(k, v)
                     #REFRESH ICON
                     obj.setIcon(QIcon(str(colouredpath)))
+
+                    #adjust dropdown icon for colourpalettes
+                    if k == "colourPalette_btn":
+                        rgb_list = list((v[1:-1]).split(", "))
+                        self.select_RGB_SL = (
+                            clamp(int(rgb_list[0]), 0, 255),
+                            clamp(int(rgb_list[1]), 0, 255),
+                            clamp(int(rgb_list[2]), 0, 255)
+                        )
+                        self.light_rgb_tuple = (
+                            clamp(int(rgb_list[0]) - 40, 0, 255),
+                            clamp(int(rgb_list[1]) - 40, 0, 255),
+                            clamp(int(rgb_list[2]) - 40, 0, 255)
+                            ) 
+                        self.rgb_tuple = (
+                            clamp(int(rgb_list[0]) - 120, 0, 255),
+                            clamp(int(rgb_list[1]) - 120, 0, 255),
+                            clamp(int(rgb_list[2]) - 120, 0, 255)
+                            ) 
+                        self.hexval = '#%02x%02x%02x' % self.rgb_tuple
+                        print(f"Adjusting colourPalette dropdown {self.hexval}, {self.rgb_tuple}, {self.light_rgb_tuple}")
+                        # Apply the styles specifically to the dropdown button (colourPalette_btn)
+                        obj.setStyleSheet(f"""
+                            QToolButton {{
+                                background-color: {self.hexval};   /* Set background color */
+                                border: 1px solid {self.hexval};   /* Optional: add border matching background */
+                                padding-right: 14px;          /* Adjust padding */
+                                border-radius: 5px;
+                            }}
+                            
+                            QToolButton::menu-indicator {{
+                                background-color: {self.hexval};   /* Set the menu indicator color */
+                                padding: 3px;                 /* Adjust indicator size */
+                            }}
+                            
+                            QToolButton::icon {{
+                                image: url({str(colouredpath)}); /* Correct way to set the icon image */
+                            }}
+                        """)
                 #select file from system and use PIL to change based on colour v, then s
                 pass
 
             #recolour other elements
             elif k in eColsStyle:
                 print(f"eColsStyle: {k}")
-                #adjust stylesheet to v colour by setting the stylesheet of self.{k}
+                obj = getattr(self, k, None)
+                if obj is not None:
+                    obj.setStyleSheet(f"background:rgb{v}")
+                #adjust stylesheet to v colour by setting the stylesheet of self.{k} to the rgb value of {v}
                 pass
             else:
                 print(f"other: {k}")
                 pass
+        
+        #recolour background for searchicon
+        self.engine_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {self.hexval};   /* Set background color */
+                border: 1px solid {self.hexval};   /* Optional: add border matching background */
+                padding-right: 14px;          /* Adjust padding */
+                border-radius: 5px;
+            }}
             
+            QToolButton::menu-indicator {{
+                background-color: {self.hexval};   /* Set the menu indicator color */
+                padding: 3px;                 /* Adjust indicator size */
+            }}
+            
+            QToolButton::icon {{
+                image: url({str(colouredpath)}); /* Correct way to set the icon image */
+            }}
+        """)
+        
+        #need to set colourmenu attibutes individually for each QMenu dropdown segment
+        self.ColourMenu.setAttribute(Qt.WA_TranslucentBackground)
+        self.browsermenu.setAttribute(Qt.WA_TranslucentBackground)
+
+        app.setStyleSheet(f"""
+            /* Style the dropdown menu items */
+            QMenu {{
+                background-color: {self.hexval};  /* Set background color for the dropdown */
+                border: 5px solid {self.hexval};      /* Optional border for the dropdown */
+                border-radius: 10px;
+                padding: 5px;
+            }}
+            QMenu::item::selected {{
+                colour: {self.select_RGB_SL}; 
+            }}
+            """)
+        
+        colour_rgb_str = f"rgb({self.light_rgb_tuple[0]}, {self.light_rgb_tuple[1]}, {self.light_rgb_tuple[2]})"
+        
+        for action in self.ColourMenu.actions():
+            widget = action.defaultWidget()
+            if widget:
+                #find the label inside the embedded widget to style the text color
+                label = widget.findChild(QLabel)
+                
+                #apply the background and border-radius to the embedded widget itself
+                widget.setStyleSheet(f"""
+                    QWidget {{
+                        background-color: {colour_rgb_str};
+                        border-radius: 6px;
+                        margin: 2px 5px 2px 5px; /* Add margin to visually separate items */
+                    }}
+                """)
+                
+                if label:
+                    label.setStyleSheet(f"color: {self.hexval}") #needs a contrastive colour
+
+            #needs to happen again for engine menu, maybe this needs reworking??
+            #can't seem to find the engine labels?
+            # Apply styling to the browsermenu (Engine Selector)
+            for action in self.browsermenu.actions():
+                widget = action.defaultWidget()
+                if widget:
+                    # Get the engine name from the action data (e.g., 'google')
+                    engine_key = action.data()[0] 
+
+                    # Find the text label using its unique object name
+                    # findChild(Class, name) is safer than findChild(Class)
+                    text_label = widget.findChild(QLabel, f"browser_menu_text_label_{engine_key}")
+                    
+                    # Apply the background and border-radius to the embedded widget itself
+                    widget.setStyleSheet(f"""
+                        QWidget {{
+                            background-color: {colour_rgb_str};
+                            border-radius: 6px;
+                            margin: 2px 5px 2px 5px; /* Add margin to visually separate items */
+                        }}
+                    """)
+                    
+                    if text_label:
+                        text_label.setStyleSheet(f"color: {self.hexval}")
+
+
         #run through key value pair and map to button name then swap rgb or hsv values
         print(f"button stuff: {eColsButton}")
         print(f"style stuff: {eColsStyle}")
