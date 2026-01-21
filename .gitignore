@@ -1,23 +1,16 @@
-# ===== CEF (ignore everything by default) =====
-cef/**
-!cef/**/tests/
-!cef/**/tests/cefsimple/
-!cef/**/tests/cefsimple/**/*.cc
-!cef/**/tests/cefsimple/**/*.h
+# ===== Ignore everything in CEF tutorial =====
+CEF TUTORIAL/**
 
-# CEF build output
-cef/**/build/
-cef/**/out/
+# ===== Re-allow directory traversal =====
+!CEF TUTORIAL/**/
+!CEF TUTORIAL/**/tests/
+!CEF TUTORIAL/**/tests/cefsimple/
 
-# CEF binaries and runtime
-cef/**/*.exe
-cef/**/*.dll
-cef/**/*.pdb
-cef/**/*.lib
-cef/**/*.exp
-cef/**/*.pak
-cef/**/*.bin
-cef/**/locales/
+# ===== Re-allow cefsimple source files =====
+!CEF TUTORIAL/**/tests/cefsimple/**/*.cc
+!CEF TUTORIAL/**/tests/cefsimple/**/*.h
+
+
 
 # Visual Studio
 .vs/
