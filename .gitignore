@@ -1,3 +1,10 @@
+# ===== CEF (ignore everything by default) =====
+cef/**
+!cef/**/tests/
+!cef/**/tests/cefsimple/
+!cef/**/tests/cefsimple/**/*.cc
+!cef/**/tests/cefsimple/**/*.h
+
 # CEF build output
 cef/**/build/
 cef/**/out/
