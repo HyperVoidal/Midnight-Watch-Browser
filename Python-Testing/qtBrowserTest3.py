@@ -80,6 +80,10 @@ class Browser(QMainWindow):
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self.switch_tab)
         eColsStyle.append("tabs")
+        eColsStyle.append("tab_backer") #for background of tab bar!
+        # default tab sizing (set once) to avoid repeated overrides
+        # Apply sizing directly to the QTabBar so later per-widget stylesheets don't clobber it
+        self.tabs.tabBar().setStyleSheet("QTabBar::tab { height: 30px; width: 150px; }")
         self.setCentralWidget(self.tabs)
         self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
 
@@ -284,8 +288,25 @@ class Browser(QMainWindow):
         browser.setUrl(qurl)
 
         i = self.tabs.addTab(browser, label)
-        self.tabs.setStyleSheet("QTabBar::tab { height: 30px; width: 150px;}")
+
         self.tabs.setCurrentIndex(i)
+        # If we have a stored tab backer/contrast from the current theme, apply it to the new tab
+        tabbar = self.tabs.tabBar()
+        if hasattr(self, '_tab_backer_color'):
+            pal = tabbar.palette()
+            pal.setColor(QPalette.Window, self._tab_backer_color)
+            tabbar.setAutoFillBackground(True)
+            tabbar.setPalette(pal)
+            # ensure visible background by setting a simple stylesheet on the tabBar without removing sizing rules
+            r, g, b = self._tab_backer_color.red(), self._tab_backer_color.green(), self._tab_backer_color.blue()
+            existing = tabbar.styleSheet() or ""
+            size_rule = "QTabBar::tab { height: 30px; width: 150px; }"
+            if "QTabBar::tab" not in existing:
+                existing = existing + "\n" + size_rule
+            tabbar.setStyleSheet(existing + f"\nQTabBar {{ background-color: rgb({r}, {g}, {b}); }}")
+            tabbar.update()
+        if hasattr(self, '_tab_contrast_color'):
+            tabbar.setTabTextColor(i, self._tab_contrast_color)
 
         # Connect signals
         browser.urlChanged.connect(lambda qurl, browser=browser: self.update_tab_title(browser))
@@ -357,6 +378,8 @@ class Browser(QMainWindow):
         self.engine_btn.setIcon(QIcon(str(icon_cache_dir / f"{key}")))
     
     def SelectColourTheme(self, profile, themes):
+        self.tabs.setStyleSheet("")
+        self.tabs.tabBar().setStyleSheet("")
         global eColsButton, eColsStyle
         self.selectedprofile = profile
 
@@ -374,10 +397,10 @@ class Browser(QMainWindow):
         dataedit["mainUser"]["ColourProfile"] = profile
         with open (f"{self.main_path}/data/userData.json", "w") as f:
             json.dump(dataedit, f)
-
             
 
         #recolour icons
+        tabcolour = "(255, 255, 255)" #white is default
         for k, v in datalist:
             if k in eColsButton:
                 print(f"eColsButton: {k}")
@@ -434,9 +457,76 @@ class Browser(QMainWindow):
                 print(f"eColsStyle: {k}")
                 obj = getattr(self, k, None)
                 if obj is not None:
-                    obj.setStyleSheet(f"background:rgb{v}")
-                #adjust stylesheet to v colour by setting the stylesheet of self.{k} to the rgb value of {v}
-                pass
+                    if k not in ('tabs', 'tab_backer'):
+                        obj.setStyleSheet(f"background:rgb{v}")
+
+                # parse the rgb tuple
+                rgb_vals = [int(x.strip()) for x in str(v).strip('()').split(',')]
+                avgnew = sum(rgb_vals) / 3
+                # choose black text for light backgrounds, white for dark backgrounds
+                contrast_qcolor = QColor(0, 0, 0) if avgnew > 150 else QColor(255, 255, 255)
+
+                if k == 'tabs':
+                    # tab text color + set URL bar to match tabs background with contrasting text
+                    for i in range(self.tabs.count()):
+                        self.tabs.tabBar().setTabTextColor(i, contrast_qcolor)
+
+                    bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
+                    text_rgb_str = f"rgb({contrast_qcolor.red()}, {contrast_qcolor.green()}, {contrast_qcolor.blue()})"
+                    self.url_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
+            
+
+                #NEED TO FIX THIS!!!!!! TAB BACKGROUND TEXT COLOUR BREAKS ON NEW TAB!!!!
+
+
+                elif k == 'tab_backer':
+                    # set the tab bar background color specifically using QPalette (more robust than stylesheets)
+                    r, g, b = rgb_vals
+                    tabbar = self.tabs.tabBar()
+
+                    # Apply color to the tabBar via palette to avoid stylesheet parsing issues
+                    color = QColor(r, g, b)
+                    pal = tabbar.palette()
+                    pal.setColor(QPalette.Window, color)
+                    tabbar.setAutoFillBackground(True)
+                    tabbar.setPalette(pal)
+                    # fallback: explicitly set stylesheet on tabBar so background is reliably visible
+                    existing = tabbar.styleSheet() or ""
+                    size_rule = "QTabBar::tab { height: 30px; width: 150px; }"
+                    if "QTabBar::tab" not in existing:
+                        existing = existing + "\n" + size_rule
+                    tabbar.setStyleSheet(existing + f"\nQTabBar {{ background-color: rgb({r}, {g}, {b}); }}")
+
+                    # Also set the QTabWidget pane background so the area behind tabs matches
+                    tabs_pal = self.tabs.palette()
+                    tabs_pal.setColor(QPalette.Window, color)
+                    self.tabs.setAutoFillBackground(True)
+                    self.tabs.setPalette(tabs_pal)
+
+                    # Store values for later (e.g., when adding new tabs)
+                    self._tab_backer_color = color
+                    self._tab_contrast_color = contrast_qcolor
+
+                    # Update existing tab text contrast
+                    for i in range(self.tabs.count()):
+                        tabbar.setTabTextColor(i, contrast_qcolor)
+
+
+
+                    ##THIS ISN'T UPDATING COLOURS AFTER COLOURSWITCH??? ONLY UPDATES ON REBOOT???? NEED TO FIX!!!!
+                    self.tabs.setStyleSheet(f"QTab::pane {{ color: {color}; }}")
+
+                    # Force UI refresh
+                    tabbar.update()
+                    self.tabs.update()
+                    QApplication.processEvents()
+
+                elif k == 'url_bar':
+                    # explicit url_bar entry overrides url bar styling
+                    text_qcolor = QColor(0, 0, 0) if avgnew > 150 else QColor(255, 255, 255)
+                    bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
+                    text_rgb_str = f"rgb({text_qcolor.red()}, {text_qcolor.green()}, {text_qcolor.blue()})"
+                    self.url_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
             else:
                 print(f"other: {k}")
                 pass

@@ -1,0 +1,21 @@
+# CEF build output
+cef/**/build/
+cef/**/out/
+
+# CEF binaries and runtime
+cef/**/*.exe
+cef/**/*.dll
+cef/**/*.pdb
+cef/**/*.lib
+cef/**/*.exp
+cef/**/*.pak
+cef/**/*.bin
+cef/**/locales/
+
+# Visual Studio
+.vs/
+*.vcxproj*
+*.sln
+
+# OS junk
+Thumbs.db
