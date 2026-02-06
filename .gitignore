@@ -1,21 +1,27 @@
-# ===== Ignore everything in CEF tutorial =====
-CEF TUTORIAL/**
+#Important factor-out components to make sure build files and venv files aren't sent into the repo.
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
 
-# ===== Re-allow directory traversal =====
-!CEF TUTORIAL/**/
-!CEF TUTORIAL/**/tests/
-!CEF TUTORIAL/**/tests/cefsimple/
+# C++ Build Artifacts
+build/
+bin/
+obj/
+*.so
+*.a
+*.la
+*.o
+*.out
 
-# ===== Re-allow cefsimple source files =====
-!CEF TUTORIAL/**/tests/cefsimple/**/*.cc
-!CEF TUTORIAL/**/tests/cefsimple/**/*.h
+# IDEs and System
+.vscode/
+.idea/
+.DS_Store
+*.swp
 
-
-
-# Visual Studio
-.vs/
-*.vcxproj*
-*.sln
-
-# OS junk
-Thumbs.db
+# Qt specific
+.qt/
+CMakeLists.txt.user
