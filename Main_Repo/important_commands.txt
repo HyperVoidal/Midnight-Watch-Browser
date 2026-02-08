@@ -1,0 +1,8 @@
+//Creating venv properly
+python -m venv --system-site-packages venv 
+source venv/bin/activate
+
+//Rebuilding C++ files after editing
+cd to build file
+cmake ..
+make
