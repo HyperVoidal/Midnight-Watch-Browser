@@ -1,24 +1,46 @@
 import sys
+import warnings
 from PySide6.QtCore import QUrl 
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEnginePage
-from PySide6.QtWebEngineCore import QWebEngineProfile
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineExtensionManager
+from PySide6.QtWidgets import QCheckBox
 from PySide6.QtCore import *
 from PySide6.QtGui import *
+from PySide6.QtWebEngineCore import QWebEngineUrlScheme
 from urllib.parse import urlparse
 from pathlib import Path
 import urllib.request
 import os
 from PIL import Image, ImageOps
 import json
-from network_controller import AdInterceptor
+from network_controller import AdInterceptor, EVAdInterceptor
+from extensionmanager import *
+from ui_core import *
+
+# Suppress PySide6 SbkConverter warnings for extension enumeration
+warnings.filterwarnings("ignore", message=".*SbkConverter::copyToPython.*")
+
+#tweaking extension support with schemes, environment variables, and profile settings
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-features=ExtensionManifestV2Unsupported,ExtensionManifestV2Disabled"
+
+""" scheme = QWebEngineUrlScheme(b"chrome-extension")
+scheme.setFlags(
+    QWebEngineUrlScheme.Flag.SecureScheme | 
+    QWebEngineUrlScheme.Flag.LocalScheme | 
+    QWebEngineUrlScheme.Flag.LocalAccessAllowed
+)
+QWebEngineUrlScheme.registerScheme(scheme)
+ """
+
 
 #Icon cache 
 icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
 icon_cache_dir.mkdir(exist_ok=True)
 
+#Main src source
+srcSourceDir = Path(__file__).parent
 
 def get_normIcon(name):
     icon_path = icon_cache_dir / f"{name}"
@@ -69,15 +91,27 @@ class Browser(QMainWindow):
         self.setWindowTitle("Midnight Engine")
         self.resize(1200, 800)
         global eColsStyle
-        global eColsButtons
+        global eColsButton
         self.url_bar = QLineEdit()
         eColsStyle.append("url_bar")
         self.user = "mainUser" #make a system for this at some point!!!from PySide6.QtWebEngineCore import QWebEngineProfile
 
+        
+        self.profile = QWebEngineProfile("PersistentUser")
+        settings = self.profile.settings()
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
+
         #adblock interceptor
-        self.profile = QWebEngineProfile.defaultProfile()
         self.interceptor = AdInterceptor()
         self.profile.setUrlRequestInterceptor(self.interceptor)
+
+        #extension manager
+        self.ext_manager = self.profile.extensionManager()
+        self.extman_instance = ExtensionManager(self.ext_manager)
+
+        
         
 
         self.main_path = Path(__file__).parent
@@ -102,6 +136,10 @@ class Browser(QMainWindow):
 
         #buttons
 
+        #url bar buttons - add one for enabling/disabling inbuilt adblock
+        
+
+        #main button constructors
         self.ButtonConstructor("back_btn", "Back", "back", "go_back")
         self.ButtonConstructor("reload_btn", "Reload", "reload", "reload_page")
         self.ButtonConstructor("forward_btn", "Forward", "forward", "go_forward")
@@ -145,7 +183,7 @@ class Browser(QMainWindow):
 
             #Add text
             Ctext_label = QLabel(key.capitalize())
-            Ctext_label.setStyleSheet("text-align:center")#fix this????
+            Ctext_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             Clayout.addWidget(Ctext_label)
 
             #Create Widget Action
@@ -201,10 +239,12 @@ class Browser(QMainWindow):
             icon = QIcon(str(icon_cache_dir / f"{key}"))
             icon_label.setPixmap(icon.pixmap(16, 16))
             layout.addWidget(icon_label)
+            icon_label.setFixedWidth(30) 
             
             # Add text
             text_label = QLabel(key.capitalize())   
             text_label.setObjectName(f"browser_menu_text_label_{key}")
+            text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(text_label)
 
             # Create QWidgetAction and set the custom widget
@@ -230,8 +270,33 @@ class Browser(QMainWindow):
 
         self.current_browser.urlChanged.connect((lambda q: self.url_bar.setText(q.toString())))
 
+        #Extensions Buttons
+        #create button
+        #on click button to open:         self.extman_instance.manager(), pull class from extensionmanager, list extensions, button to navigate to chrome web store, maybe one to open install location + autoloading??
+        eColsButton.append("ext_btn")
+        self.ext_btn = QToolButton(self)
+        self.ext_btn.setText("ext_btn")
+        self.ext_btn.setToolTip("See all extensions")
+        self.ext_menu = QMenu(self)
+        setattr(self, "ext_btn", self.ext_btn)
+
+        self.ext_btn.setMenu(self.ext_menu)
+        self.ext_btn.setIcon(get_normIcon("ext"))
+        self.ext_menu.aboutToShow.connect(self.extensionmanagement)
+        self.ext_btn.setPopupMode(QToolButton.InstantPopup)
+        self.nav_bar.addWidget(self.ext_btn)
+
         #final reset to styling to skip default selection
         self.SelectColourTheme(self.selectedprofile, Colourdata)
+
+        #Deploy js code when webpage starts
+        EVAdInterceptor.deployPayload(browser=self.current_browser) #TODO: Script executes but doesn't actually work, research into that??? storage access permission denied
+        #alternatively, just work on rudimentary adblock and suggest ublock; integrate chrome extensions store
+
+
+        
+        
+
 
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
         """Creates all buttons for navbar"""
@@ -297,28 +362,14 @@ class Browser(QMainWindow):
         i = self.tabs.addTab(browser, label)
 
         self.tabs.setCurrentIndex(i)
-        # If we have a stored tab backer/contrast from the current theme, apply it to the new tab
-        tabbar = self.tabs.tabBar()
-        if hasattr(self, '_tab_backer_color'):
-            pal = tabbar.palette()
-            pal.setColor(QPalette.Window, self._tab_backer_color)
-            tabbar.setAutoFillBackground(True)
-            tabbar.setPalette(pal)
-            # ensure visible background by setting a simple stylesheet on the tabBar without removing sizing rules
-            r, g, b = self._tab_backer_color.red(), self._tab_backer_color.green(), self._tab_backer_color.blue()
-            existing = tabbar.styleSheet() or ""
-            size_rule = "QTabBar::tab { height: 30px; width: 150px; }"
-            if "QTabBar::tab" not in existing:
-                existing = existing + "\n" + size_rule
-            tabbar.setStyleSheet(existing + f"\nQTabBar {{ background-color: rgb({r}, {g}, {b}); }}")
-            tabbar.update()
-        if hasattr(self, '_tab_contrast_color'):
-            tabbar.setTabTextColor(i, self._tab_contrast_color)
+
+        if hasattr(self, 'contrast_qcolor'):
+            self.tabs.tabBar().setTabTextColor(i, self.contrast_qcolor)
 
         # Connect signals
         browser.urlChanged.connect(lambda qurl, browser=browser: self.update_tab_title(browser))
         browser.loadStarted.connect(self.start_reload_animation)
-        browser.loadFinished.connect(lambda ok, b=browser: (self.stop_reload_animation(), self.on_load_finished()))
+        browser.loadFinished.connect(lambda ok, b=browser: (self.stop_reload_animation(), self.on_load_finished(browser)))
         browser.titleChanged.connect(lambda title, browser=browser: self.update_tab_title(browser, title))
 
         
@@ -355,7 +406,15 @@ class Browser(QMainWindow):
             if title.endswith('homepage.html'):
                 title = 'Homepage'
 
+            if "https://chromewebstore.google.com/detail/" in title:
+                print("THEYRE ON THE WEB STORE ENTRY GETTEM RAHHHHHHHHH")
+                self.triggerExtensionsPopup(browser, browser.url().toString())
+                
+
             self.tabs.setTabText(i, title)
+            self.update_url_bar_buttons(browser.url().toString(), browser)
+            
+        pass
 
     def load_url(self):
         url = self.url_bar.text()
@@ -371,9 +430,10 @@ class Browser(QMainWindow):
             fullurl = engines[engine] + texturlcomp
             print(fullurl)
         
+
         self.current_browser.setUrl(QUrl(fullurl))
 
-    def on_load_finished(self):
+    def on_load_finished(self, browser):
         pass
     
     def set_engine(self, key):
@@ -471,24 +531,24 @@ class Browser(QMainWindow):
                 rgb_vals = [int(x.strip()) for x in str(v).strip('()').split(',')]
                 avgnew = sum(rgb_vals) / 3
                 # choose black text for light backgrounds, white for dark backgrounds
-                contrast_qcolor = QColor(0, 0, 0) if avgnew > 150 else QColor(255, 255, 255)
+                self.contrast_qcolor = QColor(0, 0, 0) if avgnew > 150 else QColor(255, 255, 255)
 
                 if k == 'tabs':
                     # tab text color + set URL bar to match tabs background with contrasting text
                     for i in range(self.tabs.count()):
-                        self.tabs.tabBar().setTabTextColor(i, contrast_qcolor)
+                        self.tabs.tabBar().setTabTextColor(i, self.contrast_qcolor)
 
                     bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
-                    text_rgb_str = f"rgb({contrast_qcolor.red()}, {contrast_qcolor.green()}, {contrast_qcolor.blue()})"
+                    text_rgb_str = f"rgb({self.contrast_qcolor.red()}, {self.contrast_qcolor.green()}, {self.contrast_qcolor.blue()})"
                     self.url_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
-            
-
-                #NEED TO FIX THIS!!!!!! TAB BACKGROUND TEXT COLOUR BREAKS ON NEW TAB!!!!
-
 
                 elif k == 'tab_backer':
                     # set the tab bar background color specifically using QPalette (more robust than stylesheets)
                     r, g, b = rgb_vals
+                    self.tabs.setDocumentMode(True)
+                    self.tabs.setAutoFillBackground(True)
+                    self.tabs.tabBar().setStyleSheet(f"QTab::pane {{ color: rgb({r}, {g}, {b}); }}")
+                    self.tabs.setStyleSheet(f"\nQTabBar {{ color: rgb({r}, {g}, {b}); }}")
                     tabbar = self.tabs.tabBar()
 
                     # Apply color to the tabBar via palette to avoid stylesheet parsing issues
@@ -509,24 +569,15 @@ class Browser(QMainWindow):
                     tabs_pal.setColor(QPalette.Window, color)
                     self.tabs.setAutoFillBackground(True)
                     self.tabs.setPalette(tabs_pal)
-
-                    # Store values for later (e.g., when adding new tabs)
-                    self._tab_backer_color = color
-                    self._tab_contrast_color = contrast_qcolor
+                    tabbar.setPalette(tabs_pal)
 
                     # Update existing tab text contrast
                     for i in range(self.tabs.count()):
-                        tabbar.setTabTextColor(i, contrast_qcolor)
+                        tabbar.setTabTextColor(i, self.contrast_qcolor)
 
+                    print(r, g, b)
+                    self.tabs.setStyleSheet(f"QTab::pane {{ color: rgb({r}, {g}, {b}); }}")
 
-
-                    ##THIS ISN'T UPDATING COLOURS AFTER COLOURSWITCH??? ONLY UPDATES ON REBOOT???? NEED TO FIX!!!!
-                    self.tabs.setStyleSheet(f"QTab::pane {{ color: {color}; }}")
-
-                    # Force UI refresh
-                    tabbar.update()
-                    self.tabs.update()
-                    QApplication.processEvents()
 
                 elif k == 'url_bar':
                     # explicit url_bar entry overrides url bar styling
@@ -646,7 +697,210 @@ class Browser(QMainWindow):
     def ColourThemeEditor(self):
         print("ColourThemeEditor still WIP")
         pass
+
+
+
+
+
+    def PopupSystem(self, browser, title, message, buttons):
+        overlay = Overlay(browser)
+        overlay.show()
+
+        dialogue = Dialog(browser)
+        # Configure the buttons BEFORE calling exec()
+        dialogue.outputPrompt(title, message, buttons)
+        
+        # exec() blocks here and returns the integer passed to done()
+        result = dialogue.exec()
+
+        overlay.deleteLater()
+        return result
     
+
+    def triggerExtensionsPopup(self, browser, url):
+        # Define buttons and their unique return codes
+        ext_selections = [("Download Now", QDialog.Accepted), ("No thanks", QDialog.Rejected)]
+        
+        res = self.PopupSystem(browser, "Extension Manager", "Download this extension to Midnight Watch?", ext_selections)
+        
+        if res == QDialog.Accepted:
+            print("GET THE DOWNLOAD READY GOGOGOGO")
+            self.extman_instance.installer(url, srcSourceDir)
+        else:
+            print("Download ignored by user.")
+            pass
+
+    def update_url_bar_buttons(self, url, browser):
+        is_webstore = "https://chromewebstore.google.com/detail/" in url
+
+        # Remove existing action
+        if hasattr(self, 'reopen_button') and self.reopen_button is not None:
+            self.url_bar.removeAction(self.reopen_button)
+            self.reopen_button = None
+
+        # Add only if on webstore
+        if is_webstore:
+            with open(f"{self.main_path}/data/colourProfiles.json", "r") as f:
+                Colourdata = json.load(f)
+                colour = Colourdata[self.selectedprofile]["ext_btn"]
+            buttoncolourer("extdown_btn", colour)
+
+            icon = get_normIcon("extdown")
+            self.reopen_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
+            self.reopen_button.setToolTip("Reopen Extension Prompt")
+            self.reopen_button.triggered.connect(lambda: self.triggerExtensionsPopup(browser, url))
+            self.url_bar.update()  
+
+
+    def extensionmanagement(self):
+        self.ext_menu.clear()
+        json_path = Path(srcSourceDir) / "data/extensionList.json"
+
+        if not json_path.exists():
+            return
+
+        with open(json_path, "r") as f:
+            extensions_data = json.load(f)
+
+        for ext_id, info in extensions_data.items():
+            ext_path = Path(info["path"])
+            if not ext_path.exists(): continue
+
+            with open(ext_path / "manifest.json", "r") as m:
+                manifest = json.load(m)
+
+            ext_widget = QWidget()
+            layout = QHBoxLayout(ext_widget)
+            layout.setContentsMargins(5, 2, 5, 2)
+
+            # Icon
+            icon_label = QLabel()
+            icons = manifest.get("icons", {})
+            icon_file = icons.get("128") or icons.get("48") or icons.get("16")
+            if icon_file:
+                icon_label.setPixmap(QIcon(str(ext_path / icon_file)).pixmap(18, 18))
+            layout.addWidget(icon_label)
+
+            # Name
+            name_label = QLabel(info.get("name", ext_id))
+            name_label.setStyleSheet("font-weight: bold;")
+            layout.addWidget(name_label)
+            layout.addStretch() # Pushes the checkbox to the right
+
+            # Checkbox (The new toggle)
+            check = QCheckBox()
+            live_extensions = self.ext_manager.extensions()
+            # Generator to find the match (handles the NoneType bug by checking 'ext is not None')
+            live_ext = next((ext for ext in live_extensions if ext is not None and ext.extensionId() == ext_id), None)
+
+            is_enabled = live_ext.isEnabled() if live_ext else info.get("enabled", True)
+            check.setChecked(is_enabled)
+
+            
+            # Connect the toggle to both the engine and JSON persistence
+            check.toggled.connect(lambda checked, eid=ext_id: self.toggle_extension(eid, checked, json_path))
+            
+            layout.addWidget(check)
+
+            action = QWidgetAction(self.ext_menu)
+            action.setDefaultWidget(ext_widget)
+            self.ext_menu.addAction(action)
+
+
+        pass
+    
+
+    def open_extension_options(self, ext_id):
+        # Extension internal pages follow this URI scheme:
+        options_url = f"chrome-extension://{ext_id}/manifest.json" 
+        # Note: For uBlock, you might want to point to their actual dashboard:
+        # f"chrome-extension://{ext_id}/dashboard.html"
+        self.add_new_tab(QUrl(options_url), "Extension Settings")
+
+
+    def toggle_extension(self, ext_id, checked, json_path):
+        #using any reference to self.ext_manager.extensions() to track the list of active extensions triggers a bug in qt's C++ -> python wrapper
+        #As a result, I'm making my own list in the active/inactive readings on extensionList.json()
+        #SBKconverter issue for C++ to Python conversion is likely to be unpatched until the next release, which could be months, so I need to build this myself
+        #update JSON Registry
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        
+        if ext_id not in data: return
+        data[ext_id]["enabled"] = checked
+        
+        with open(json_path, "w") as f:
+            json.dump(data, f, indent=4)
+        name = data[ext_id]["name"]
+        
+        #send engine commands
+        if checked:
+            # Re-loading the path "wakes up" the extension if it was soft-disabled
+            self.ext_manager.loadExtension(data[ext_id]["path"])
+            name = data[ext_id]["name"]
+            QTimer.singleShot(500, lambda: self.finalize_permissions(ext_id, name))
+            print(f"Sent LOAD command for: {ext_id}")
+            
+            try:
+                ext_list = [ext for ext in self.ext_manager.extensions() if ext is not None]
+                for ext in ext_list:
+                    try:
+                        ext_id_str = ext.extensionId()
+                        print(f"Extension loaded: {ext_id_str}, enabled: {ext.isEnabled()}")
+                        ext.setAllowedOnAnySite(True)
+                    except Exception as e:
+                        print(f"Warning: Could not process extension: {e}")
+            except Exception as e:
+                print(f"Warning: Could not enumerate extensions: {e}")
+            
+            print(f"Broad permissions granted for {name}")
+        else:
+            #set enabled to false in json then unload extension
+            print(f"Extension {ext_id} marked as DISABLED in JSON.")
+            try:
+                ext_list = [ext for ext in self.ext_manager.extensions() if ext is not None]
+                for ext in ext_list:
+                    try:
+                        if ext.extensionId() == ext_id:
+                            self.ext_manager.unloadExtension(ext)
+                            print(f"Successfully unloaded extension: {ext_id}")
+                            break
+                    except Exception as e:
+                        print(f"Warning: Could not check extension ID: {e}")
+            except Exception as e:
+                print(f"Warning: Could not unload extension: {e}")
+
+        #always need to reload the current page for uBlock to attach/detach scripts
+        self.current_browser.reload() 
+
+    def finalize_permissions(self, ext_id, name):
+        selections = [("Accept", QDialog.Accepted), ("Deny", QDialog.Rejected)]
+        selectaccess = self.PopupSystem(self.current_browser, "Extension Manager", f"Grant Javascript permissions to {name}?", selections)
+        
+        if selectaccess == QDialog.Accepted:
+            try:
+                ext_list = [ext for ext in self.ext_manager.extensions() if ext is not None]
+                for ext in ext_list:
+                    try:
+                        ext_id_str = ext.extensionId()
+                        print(f"Checking extension: {ext_id_str}")
+                        if ext_id_str == ext_id:
+                            ext.setAllowedOnAnySite(True)
+                            print(f"Permissions granted for extension: {ext_id}")
+                            return
+                    except Exception as e:
+                        print(f"Warning: Could not check extension: {e}")
+                print(f"Extension {ext_id} not found in manager.")
+            except Exception as e:
+                print(f"Warning: Could not finalize permissions: {e}")
+            return
+        else:
+            print(f"js access disabled for extension: {name}.")
+            return
+
+            
+
+
 
     
 if __name__ == "__main__":

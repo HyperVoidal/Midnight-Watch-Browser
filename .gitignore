@@ -15,6 +15,13 @@ obj/
 *.la
 *.o
 *.out
+.cmake/
+CMakeFiles/
+build.ninja
+cmake_install.cmake
+CMakeCache.txt
+CMakeLists.txt
+compile_commands.json
 
 # IDEs and System
 .vscode/
