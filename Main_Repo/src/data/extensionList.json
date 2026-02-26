@@ -2,11 +2,13 @@
     "ddkjiahejlhfcafbddmgiahcphecmpfh": {
         "engine_id": "ddkjiahejlhfcafbddmgiahcphecmpfh",
         "name": "uBlock Origin Lite",
-        "path": "/home/aethereal/.local/share/main.py/QtWebEngine/PersistentUser/Extensions/ddkjiahejlhfcafbddmgiahcphecmpfh_unpacked_YSc6qX"
+        "path": "/home/aethereal/.local/share/main.py/QtWebEngine/PersistentUser/Extensions/ddkjiahejlhfcafbddmgiahcphecmpfh_unpacked_YSc6qX",
+        "enabled": true
     },
     "eimadpbcbfnmbkopoojfekhnkhdbieeh": {
         "engine_id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
         "name": "Dark Reader",
-        "path": "/home/aethereal/.local/share/main.py/QtWebEngine/PersistentUser/Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh_unpacked_YSc6qX"
+        "path": "/home/aethereal/.local/share/main.py/QtWebEngine/PersistentUser/Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh_unpacked_YSc6qX",
+        "enabled": true
     }
 }

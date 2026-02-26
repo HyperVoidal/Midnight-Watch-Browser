@@ -31,6 +31,7 @@ class ExtensionManager():
         self.extensions = self.ext_manager.extensions()
 
         self.install_root = Path(self.ext_manager.installPath()) #Returns absolute path to extension install directory so I don't have to make a new one
+        print(self.install_root)
 
         self.srcSourceDir = srcSourceDir = Path(__file__).parent
         pass

@@ -1,0 +1,5 @@
+{
+    "DNS-over-HTTPS": true,
+    "Encrypted-Client Hello": true,
+    "Cookie-Prediction-Sensitivity": 0
+}

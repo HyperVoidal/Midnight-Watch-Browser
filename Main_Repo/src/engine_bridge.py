@@ -1,6 +1,10 @@
 import ctypes
 import os
 import sys
+from adblock import Engine, FilterSet
+from pathlib import Path
+from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo
+srcSourceDir = Path(__file__).parent
 
 def get_library():
     #Locate .so file for processing in the build path
@@ -27,13 +31,82 @@ except Exception as e:
     print(f"Error loading C++ core: {e}")
     midnight_core = None
 
-def is_url_safe(url: str) -> bool:
-    """Python wrapper to call the C++ function"""
-    if not midnight_core:
-        return True #Default to safe if core failed to load
-        
-    #Convert Python string to C-style bytes
-    url_bytes = url.encode('utf-8')
-    result = midnight_core.verify_url_safe(url_bytes)
+
+def load_engine():
+    try:
+        path = srcSourceDir / "data" / "urlblockerlist.txt"
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                #create filterset
+                filter_set = FilterSet()
+                #splitlines list conversion
+                filter_set.add_filters(f.read().splitlines())
+                #pass filterset to engine
+                return Engine(filter_set)
+    except Exception as e:
+        print(f"Failed to load engine: {e}")
     
-    return bool(result)
+    # Fallback to an empty FilterSet if file is missing
+    return Engine(FilterSet())
+
+# Initialise engine from filter lists
+engine = load_engine()
+
+# Map Qt Enums to strings that adblock-python understands
+RESOURCE_MAP = {
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame: "document",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeSubFrame: "subdocument",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeStylesheet: "stylesheet",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeScript: "script",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeImage: "image",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeXhr: "xmlhttprequest",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypePrefetch: "xmlhttprequest",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypePing: "ping",
+    QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMedia: "media",
+}
+
+# engine_bridge.py
+
+# engine_bridge.py
+
+def get_cosmetic_filters(url: str):
+    try:
+        # Get the resources object for the specific URL
+        resources = engine.url_cosmetic_resources(url)
+        
+        # Try retrieving the stylesheet (some versions use .style_sheet, some .stylesheet)
+        css_code = getattr(resources, 'style_sheet', getattr(resources, 'stylesheet', ""))
+        
+        # If no full stylesheet is provided, check for hide_selectors (list of tags)
+        if not css_code and hasattr(resources, 'hide_selectors'):
+            selectors = resources.hide_selectors
+            if selectors:
+                css_code = ", ".join(selectors) + " { display: none !important; }"
+
+        return css_code if css_code else ""
+    except Exception as e:
+        print(f"Midnight Shield: Cosmetic Error - {e}")
+        return ""
+
+def get_scriptlets(url: str):
+    try:
+        resources = engine.url_cosmetic_resources(url)
+        
+        # Check both potential attribute names
+        script_code = getattr(resources, 'scriptlets', getattr(resources, 'injected_script', ""))
+        
+        return script_code if script_code else ""
+    except Exception as e:
+        print(f"Midnight Shield: Scriptlet Retrieval Error - {e}")
+        return ""
+
+
+def is_url_safe(url: str, source_url: str, qt_resource_type):
+    # Map the resource type using the RESOURCE_MAP from earlier
+    rtype = RESOURCE_MAP.get(qt_resource_type, "other")
+    
+    # check_network_urls returns a BlockerResult object
+    result = engine.check_network_urls(url, source_url, rtype)
+    
+    # BlockerResult has a .matched attribute (True if it should be blocked)
+    return not result.matched

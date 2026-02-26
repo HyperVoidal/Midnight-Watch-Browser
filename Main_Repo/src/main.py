@@ -8,32 +8,24 @@ from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngin
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtCore import *
 from PySide6.QtGui import *
-from PySide6.QtWebEngineCore import QWebEngineUrlScheme
+from PySide6.QtNetwork import QNetworkCookie, QNetworkCookieJar, QNetworkAccessManager
+from PySide6.QtWebEngineCore import QWebEngineCookieStore
 from urllib.parse import urlparse
 from pathlib import Path
 import urllib.request
 import os
 from PIL import Image, ImageOps
 import json
-from network_controller import AdInterceptor, EVAdInterceptor
+from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker
 from extensionmanager import *
 from ui_core import *
+from cookieManager import CookieManager
 
 # Suppress PySide6 SbkConverter warnings for extension enumeration
 warnings.filterwarnings("ignore", message=".*SbkConverter::copyToPython.*")
 
-#tweaking extension support with schemes, environment variables, and profile settings
+#Tweaking extension support with schemes, environment variables, and profile settings
 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-features=ExtensionManifestV2Unsupported,ExtensionManifestV2Disabled"
-
-""" scheme = QWebEngineUrlScheme(b"chrome-extension")
-scheme.setFlags(
-    QWebEngineUrlScheme.Flag.SecureScheme | 
-    QWebEngineUrlScheme.Flag.LocalScheme | 
-    QWebEngineUrlScheme.Flag.LocalAccessAllowed
-)
-QWebEngineUrlScheme.registerScheme(scheme)
- """
-
 
 #Icon cache 
 icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
@@ -42,29 +34,97 @@ icon_cache_dir.mkdir(exist_ok=True)
 #Main src source
 srcSourceDir = Path(__file__).parent
 
+#Icon attachment filepath system
 def get_normIcon(name):
     icon_path = icon_cache_dir / f"{name}"
 
     return QIcon(str(icon_path))
 
-engines = {
-    "ecosia": "https://www.ecosia.org/search?q=",
-    "google": "https://www.google.com/search?udm=14&q=",
-    "brave": "https://search.brave.com/search?q=",
-    "duckduckgo": "https://duckduckgo.com/search?q="
-}
 
-#starter engine
-engine = 'brave'
+with open (f"{srcSourceDir}/data/engineData.json", "r") as f:
+    engineData = dict(json.load(f))
+
+#Secondary dictionary to continue compat with current functions
+engines = {}
+engine = ""
+for key, value in engineData.items():
+    engines[key] = value["URL"]
+    if value["active"] == True:
+        engine = key
+
+print("ENGINES LIST FROM JSON: ", engines)
+print("SELECTED ENGINE: ", engine)
+
 
 #setText names
 global eColsButton, eColsStyle
 eColsButton = []
 eColsStyle = []
 
+#Encryption Systems enable/disable
+with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
+    toggles = dict(json.load(f))
+
+if toggles["DNS-over-HTTPS"]:
+    #Forces the browser to resolve domains via HTTPS, hiding lookups from the firewall
+    sys.argv.append("--built-in-dns-lookup-enabled")
+    sys.argv.append("--dns-over-https-templates=https://cloudflare-dns.com")
+    print("DNS-over-HTTPS enabled")
+else:
+    print("DNS-over-HTTPS disabled")
+
+if toggles["Encrypted-Client Hello"]:
+    #Hides the SNI (the website name) during the SSL handshake
+    sys.argv.append("--enable-features=EncryptedClientHello")
+    print("Encrypted-Client Hello enabled")
+else:
+    print("Encrypted-Client Hello disabled")
+
+if "Cookie-Prediction-Sensitivity" in toggles.keys():
+    global sensitivity
+    sensitivity = toggles["Cookie-Prediction-Sensitivity"]
+
+# ---- MAIN FUNCTIONS ----
+
+#value clamper
 def clamp(value, min_value, max_value):
     return max(min_value, min(value, max_value))
- 
+
+#Filter update system
+def update_filters():
+    filter_path = srcSourceDir / "data" / "urlblockerlist.txt"
+    urllist = [
+        "https://easylist.to/easylist/easylist.txt", 
+        "https://easylist.to/easylist/easyprivacy.txt", 
+        "https://secure.fanboy.co.nz/fanboy-annoyance.txt", 
+        "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt"
+    ]
+    
+    if not filter_path.exists():
+        filter_path.parent.mkdir(parents=True, exist_ok=True)
+        print("Midnight Shield: Updating filters...")
+
+        with open(filter_path, "w") as f:
+            pass #clear text file
+        with open(filter_path, "a", encoding="utf-8") as f:
+            for url in urllist:
+                try:
+                    response = requests.get(url, timeout=15)
+                    if response.status_code == 200:
+                        # Write the text content plus a newline for safety
+                        f.write(response.text + "\n")
+                        print(f"Grabbed: {url.split('/')[-1]}")
+                    else:
+                        print(f"Server error {response.status_code} on {url}")
+                except Exception as e:
+                    print(f"Failed to download {url}: {e}")
+        
+        print("Midnight Shield: All filter data compiled.")
+        return True
+    return False
+
+
+#Converts image to an alpha channel and a colour channel. Turns all colours to white, removes alpha, then triggers a mask recolour to the desired appearance bsaed on json file
 def buttoncolourer(k, v):
     name = (str(k).split("_btn"))[0]
     filepath = (f"{icon_cache_dir}/{name}.png")
@@ -83,8 +143,6 @@ def buttoncolourer(k, v):
     coloured.save(colouredpath, format='PNG')
     return colouredpath
 
-
-
 class Browser(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -92,27 +150,49 @@ class Browser(QMainWindow):
         self.resize(1200, 800)
         global eColsStyle
         global eColsButton
+        global sensitivity
         self.url_bar = QLineEdit()
         eColsStyle.append("url_bar")
         self.user = "mainUser" #make a system for this at some point!!!from PySide6.QtWebEngineCore import QWebEngineProfile
 
         
-        self.profile = QWebEngineProfile("PersistentUser")
-        settings = self.profile.settings()
-        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, True)
-        settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
+        self.profile = QWebEngineProfile("PersistentUser", self)
+        self.current_browser = QWebEngineView(self)
+        #self.profile.persistentCookiesPolicy() = True
 
-        #adblock interceptor
+
+        #settings system
+        settings = self.profile.settings()
+        #Leave these true so javascript injections function properly
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(settings.WebAttribute.AllowRunningInsecureContent, True)
+        #Allows important sandboxing similar to Chrome. NEVER ENABLE THIS, IT LETS FILEPAGE JAVASCRIPT READ FILE HEADERS ON PC
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, False)
+        #Would be good but I need javascript actually working
+        settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
+        #Avoid giving instant clipboard access
+        settings.setAttribute(settings.WebAttribute.JavascriptCanAccessClipboard, False)
+
+
+        #Update adblocker filters from easylist
+        update_filters()
+        #Adblock interceptor
         self.interceptor = AdInterceptor()
         self.profile.setUrlRequestInterceptor(self.interceptor)
+        
 
-        #extension manager
+        #Extension manager
         self.ext_manager = self.profile.extensionManager()
         self.extman_instance = ExtensionManager(self.ext_manager)
+        
 
-        
-        
+        #Initialise cookie jar (Cookie management)
+        self.cookieManager = CookieManager(self.profile, sensitivity)
+        self.cookie_store = self.profile.cookieStore()
+        self.cookie_store.deleteAllCookies()
+        self.cookie_store.loadAllCookies() 
+        self.cookie_store.cookieAdded.connect(self.on_cookie_received)
+
 
         self.main_path = Path(__file__).parent
         self.home_path = self.main_path / "ui/homepage.html"
@@ -294,8 +374,14 @@ class Browser(QMainWindow):
         #alternatively, just work on rudimentary adblock and suggest ublock; integrate chrome extensions store
 
 
-        
-        
+    def on_cookie_received(self, cookie):
+        name = cookie.name().data().decode(errors='ignore')
+        domain = cookie.domain()
+        value = cookie.value().data().decode()
+        self.cookieManager.on_cookie_added(cookie)
+        #print(f"New cookie detected: {name} from {domain}")
+
+
 
 
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
@@ -357,6 +443,8 @@ class Browser(QMainWindow):
             qurl = QUrl("https://www.google.com")
         
         browser = QWebEngineView()
+        new_page = QWebEnginePage(self.profile, browser)
+        browser.setPage(new_page)
         browser.setUrl(qurl)
 
         i = self.tabs.addTab(browser, label)
@@ -417,23 +505,26 @@ class Browser(QMainWindow):
         pass
 
     def load_url(self):
-        url = self.url_bar.text()
-        urlparsed = urlparse(url)
-        if urlparsed.scheme and urlparsed.netloc:
-            print(urlparsed)
-            fullurl = url
-            pass
-        else:
-            wordlist = url.split(" ")
-            joiner = "+"
-            texturlcomp = joiner.join(wordlist)
-            fullurl = engines[engine] + texturlcomp
-            print(fullurl)
-        
+        input_text = self.url_bar.text().strip()
+        if not input_text:
+            return
 
-        self.current_browser.setUrl(QUrl(fullurl))
+        # QUrl.fromUserInput automatically handles missing schemes (adds http://)
+        # and checks if the string looks like a valid web address
+        url = QUrl.fromUserInput(input_text)
+
+        if url.isValid() and "." in input_text and " " not in input_text:
+            # It's a valid URL (e.g., "google.com")
+            self.current_browser.setUrl(url)
+        else:
+            # It's a search query
+            search_url = engines[engine] + input_text.replace(" ", "+")
+            self.current_browser.setUrl(QUrl(search_url))
 
     def on_load_finished(self, browser):
+        #attempt to close extra boxes on blocked ads
+        CosmeticBlocker.inject_css(browser)
+        ScriptletBlocker.inject_scriptlets(browser)
         pass
     
     def set_engine(self, key):
@@ -443,6 +534,16 @@ class Browser(QMainWindow):
         self.engine_btn.setText(key.capitalize())
         self.engine_btn.setToolTip(key)
         self.engine_btn.setIcon(QIcon(str(icon_cache_dir / f"{key}")))
+        
+        #reformat json file to show active browser as 'true'. Swapping browsers lets the selected one persist after resets
+        with open(f"{srcSourceDir}/data/engineData.json", "r") as f:
+            engineData = dict(json.load(f))
+        for key, value in engineData.items():
+            if engineData[key]["active"] == True:
+                engineData[key]["active"] = False
+        engineData[self.engine]["active"] = True
+        with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
+            json.dump(engineData, f)
     
     def SelectColourTheme(self, profile, themes):
         self.tabs.setStyleSheet("")
