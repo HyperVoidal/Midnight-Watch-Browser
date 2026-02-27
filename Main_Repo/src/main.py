@@ -192,6 +192,7 @@ class Browser(QMainWindow):
         self.cookie_store.deleteAllCookies()
         self.cookie_store.loadAllCookies() 
         self.cookie_store.cookieAdded.connect(self.on_cookie_received)
+        self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
 
 
         self.main_path = Path(__file__).parent
@@ -366,21 +367,36 @@ class Browser(QMainWindow):
         self.ext_btn.setPopupMode(QToolButton.InstantPopup)
         self.nav_bar.addWidget(self.ext_btn)
 
+
+        #Cookie Menu GUI
+        eColsButton.append("cookie_btn")
+        self.cookie_btn = QToolButton(self)
+        self.cookie_btn.setText("cookie_btn")
+        self.cookie_btn.setToolTip("Accept/Deny Cookies")
+        self.cookieMenu = QMenu(self)
+        setattr(self, "cookie_btn", self.cookie_btn)
+
+        self.cookie_btn.setMenu(self.cookieMenu)
+        self.cookie_btn.setIcon(get_normIcon("cookie"))
+        self.cookieMenu.aboutToShow.connect(self.cookieGUI)
+        self.cookie_btn.setPopupMode(QToolButton.InstantPopup)
+        self.nav_bar.addWidget(self.cookie_btn)
+
+
+
+
+
+
+
+
+
+
         #final reset to styling to skip default selection
         self.SelectColourTheme(self.selectedprofile, Colourdata)
 
         #Deploy js code when webpage starts
         EVAdInterceptor.deployPayload(browser=self.current_browser) #TODO: Script executes but doesn't actually work, research into that??? storage access permission denied
         #alternatively, just work on rudimentary adblock and suggest ublock; integrate chrome extensions store
-
-
-    def on_cookie_received(self, cookie):
-        name = cookie.name().data().decode(errors='ignore')
-        domain = cookie.domain()
-        value = cookie.value().data().decode()
-        self.cookieManager.on_cookie_added(cookie)
-        #print(f"New cookie detected: {name} from {domain}")
-
 
 
 
@@ -446,6 +462,8 @@ class Browser(QMainWindow):
         new_page = QWebEnginePage(self.profile, browser)
         browser.setPage(new_page)
         browser.setUrl(qurl)
+        self.current_browser = browser
+        
 
         i = self.tabs.addTab(browser, label)
 
@@ -939,7 +957,7 @@ class Browser(QMainWindow):
             # Re-loading the path "wakes up" the extension if it was soft-disabled
             self.ext_manager.loadExtension(data[ext_id]["path"])
             name = data[ext_id]["name"]
-            QTimer.singleShot(500, lambda: self.finalize_permissions(ext_id, name))
+            QTimer.singleShot(500, lambda: self.finalise_permissions(ext_id, name))
             print(f"Sent LOAD command for: {ext_id}")
             
             try:
@@ -974,7 +992,7 @@ class Browser(QMainWindow):
         #always need to reload the current page for uBlock to attach/detach scripts
         self.current_browser.reload() 
 
-    def finalize_permissions(self, ext_id, name):
+    def finalise_permissions(self, ext_id, name):
         selections = [("Accept", QDialog.Accepted), ("Deny", QDialog.Rejected)]
         selectaccess = self.PopupSystem(self.current_browser, "Extension Manager", f"Grant Javascript permissions to {name}?", selections)
         
@@ -999,7 +1017,65 @@ class Browser(QMainWindow):
             print(f"js access disabled for extension: {name}.")
             return
 
+    def on_cookie_received(self, cookie):
+        #these three aren't technically doing anything but they're good references for later
+        name = cookie.name().data().decode(errors='ignore')
+        domain = cookie.domain()
+        value = cookie.value().data().decode()
+        #actual logic - refresh cookie dictionary each time a new one is added
+        cookiedict = self.cookieManager.on_cookie_added(cookie)
+        self.cookiedict = cookiedict
+    
+    def cookieGUI(self):
+        self.cookieMenu.clear()
+
+        #Check if cookiedict exists to avoid crashes
+        if not hasattr(self, 'cookiedict') or not self.cookiedict:
+            self.cookieMenu.addAction("No cookies detected yet.")
+            print("no cookies detected or error in loading")
+            return
+        
+        for action in self.cookieMenu.actions():
+            self.cookieMenu.removeAction(action)
+            action.deleteLater()
+
+        for cookieID, value in self.cookiedict.items():
+            #Container widget for the row
+            cookie_row = QWidget()
+            layout = QHBoxLayout(cookie_row)
+            layout.setContentsMargins(10, 2, 10, 2)
+            layout.setSpacing(10)
+
+            #Labels
+            name_label = QLabel(value["name"])
+            name_label.setMinimumWidth(100)
+            predict_label = QLabel(f"({value['prediction']})")
+            predict_label.setStyleSheet("color: gray; font-size: 10px;")
             
+            layout.addWidget(name_label)
+            layout.addWidget(predict_label)
+            layout.addStretch() # Pushes buttons to the right
+
+            #Action Buttons (Standard QPushButtons work better inside the row)
+            btn_accept = QPushButton("✓")
+            btn_accept.setFixedSize(24, 24)
+            btn_accept.clicked.connect(lambda chk=False, id=cookieID: self.cookieManager.acceptCookie(id))
+
+            btn_deny = QPushButton("✕")
+            btn_deny.setFixedSize(24, 24)
+            btn_deny.clicked.connect(lambda chk=False, id=cookieID: self.cookieManager.cookieEVAPORATOR(id))
+
+            layout.addWidget(btn_accept)
+            layout.addWidget(btn_deny)
+
+            #QWidgetAction to host the row in the menu
+            container_action = QWidgetAction(self.cookieMenu)
+            container_action.setDefaultWidget(cookie_row)
+            
+            self.cookieMenu.addAction(container_action)
+            self.cookieMenu.update()
+            self.cookieMenu.repaint()
+
 
 
 
