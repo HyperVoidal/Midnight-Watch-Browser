@@ -523,6 +523,7 @@ class Browser(QMainWindow):
         pass
 
     def load_url(self):
+        #had to encase this in a try-except loop, there's an odd keyboardinterrupt error that is cased by virtually nothing and fixes by pressing enter again, this should circumvent.
         input_text = self.url_bar.text().strip()
         if not input_text:
             return
@@ -1022,57 +1023,99 @@ class Browser(QMainWindow):
         cookiedict = self.cookieManager.on_cookie_added(cookie)
         self.cookiedict = cookiedict
 
+
     def cookieGUI(self):
-        # 1. Clear existing content safely
         self.cookieMenu.clear()
+        row_colour = f"rgb({self.light_rgb_tuple[0]}, {self.light_rgb_tuple[1]}, {self.light_rgb_tuple[2]})"
 
         if not hasattr(self, 'cookiedict') or not self.cookiedict:
             self.cookieMenu.addAction("No cookies detected yet.")
             return
 
-        # 2. Reusable styling (Move outside the loop for efficiency)
-        colour_rgb_str = f"rgb({self.light_rgb_tuple[0]}, {self.light_rgb_tuple[1]}, {self.light_rgb_tuple[2]})"
-        self.cookieMenu.setStyleSheet(f"QMenu {{ background-color: {self.hexval}; border-radius: 10px; padding: 5px; }}")
+        #Scroll bar system
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                background-color: {self.hexval};
+                border: none;
+            }}
+            /* Target the internal container specifically */
+            QScrollArea > QWidget > QWidget {{ 
+                background-color: {self.hexval};
+            }}
+            /* Custom Scrollbar styling to make it look modern */
+            QScrollBar:vertical {{
+                border: none;
+                background: {self.hexval};
+                width: 8px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: rgba(255, 255, 255, 0.3); /* Semi-transparent white */
+                min-height: 20px;
+                border-radius: 4px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
+        
+        # Set max height to prevent the menu from growing off-screen
+        scroll_area.setMaximumHeight(400)
+        scroll_area.setFixedWidth(500)
 
+        #Row Containers
+        container_widget = QWidget()
+        container_layout = QVBoxLayout(container_widget)
+        container_layout.setContentsMargins(5, 5, 5, 5)
+        container_layout.setSpacing(8)
+
+        #Add rows to scroll bar
         for cookieID, value in self.cookiedict.items():
             cookie_row = QWidget()
             cookie_row.setObjectName("CookieRow")
-            cookie_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            row_layout = QHBoxLayout(cookie_row)
             
-            layout = QHBoxLayout(cookie_row)
-            layout.setContentsMargins(10, 5, 10, 5)
-            
-            # UI Elements
-            name = value["name"][:15] + "..." if len(value["name"]) > 15 else value["name"]
+            name = (value["name"][:15] + "..") if len(value["name"]) > 15 else value["name"]
             name_label = QLabel(name)
             predict_label = QLabel(f"({value['prediction']})")
             predict_label.setStyleSheet(f"color: {self.hexval}; font-size: 10px;")
             
-            # Buttons with "Stay Open" Logic
             btn_accept = QPushButton("✓")
             btn_deny = QPushButton("✕")
-            
-            for btn in [btn_accept, btn_deny]:
-                btn.setFixedSize(24, 24)
-                # Prevent the menu from closing when these specific buttons are clicked
-                btn.setAttribute(Qt.WidgetAttribute.WA_NoMousePropagation, False)
 
-            # Connect signals: Execute logic -> Refresh the whole menu list
+            btn_accept.setStyleSheet(f"background-color: {self.hexval}; colour: {row_colour};")
+            btn_deny.setStyleSheet(f"background-color: {self.hexval}; colour: {row_colour};")
+            
+            # Connect buttons (using the handle_cookie_action from previous step)
             btn_accept.clicked.connect(lambda _, id=cookieID: self.handle_cookie_action(id, "accept"))
             btn_deny.clicked.connect(lambda _, id=cookieID: self.handle_cookie_action(id, "deny"))
 
-            layout.addWidget(name_label)
-            layout.addWidget(predict_label)
-            layout.addStretch()
-            layout.addWidget(btn_accept)
-            layout.addWidget(btn_deny)
+            row_layout.addWidget(name_label)
+            row_layout.addWidget(predict_label)
+            row_layout.addStretch()
+            row_layout.addWidget(btn_accept)
+            row_layout.addWidget(btn_deny)
 
-            cookie_row.setStyleSheet(f"#CookieRow {{ background-color: {colour_rgb_str}; border-radius: 6px; }}")
+            # Styling
+            cookie_row.setStyleSheet(f"#CookieRow {{ background-color: {row_colour}; border-radius: 6px; }}")
+            
+            container_layout.addWidget(cookie_row)
 
-            # Add to Menu
-            container_action = QWidgetAction(self.cookieMenu)
-            container_action.setDefaultWidget(cookie_row)
-            self.cookieMenu.addAction(container_action)
+        # Add a stretch at the end to keep rows at the top if there are few
+        container_layout.addStretch()
+        
+        #Apply widget to scroll area
+        scroll_area.setWidget(container_widget)
+        
+        # Host the entire ScrollArea inside one QWidgetAction
+        menu_scroll_action = QWidgetAction(self.cookieMenu)
+        menu_scroll_action.setDefaultWidget(scroll_area)
+        self.cookieMenu.addAction(menu_scroll_action)
 
     def handle_cookie_action(self, cookieID, action_type):
         """Helper to process data and force a refresh while menu is open."""
@@ -1081,7 +1124,8 @@ class Browser(QMainWindow):
         else:
             self.cookieManager.cookieEVAPORATOR(cookieID)
         
-        # Crucial: Re-run the GUI builder to update the list immediately
+        #Re-Run gui builder
+        self.cookieMenu.adjustSize()
         self.cookieGUI() 
 
 
