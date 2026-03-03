@@ -32,3 +32,6 @@ compile_commands.json
 # Qt specific
 .qt/
 CMakeLists.txt.user
+
+# Remove ext_cache components
+ext_cache/

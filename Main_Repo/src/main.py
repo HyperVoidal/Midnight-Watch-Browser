@@ -82,7 +82,7 @@ else:
 
 if "Cookie-Prediction-Sensitivity" in toggles.keys():
     global sensitivity
-    sensitivity = toggles["Cookie-Prediction-Sensitivity"]
+    sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive
 
 # ---- MAIN FUNCTIONS ----
 
@@ -730,6 +730,7 @@ class Browser(QMainWindow):
         #need to set colourmenu attibutes individually for each QMenu dropdown segment
         self.ColourMenu.setAttribute(Qt.WA_TranslucentBackground)
         self.browsermenu.setAttribute(Qt.WA_TranslucentBackground)
+        self.cookieMenu.setAttribute(Qt.WA_TranslucentBackground)
 
         app.setStyleSheet(f"""
             /* Style the dropdown menu items */
@@ -745,6 +746,7 @@ class Browser(QMainWindow):
             """)
         
         colour_rgb_str = f"rgb({self.light_rgb_tuple[0]}, {self.light_rgb_tuple[1]}, {self.light_rgb_tuple[2]})"
+
         
         for action in self.ColourMenu.actions():
             widget = action.defaultWidget()
@@ -788,12 +790,6 @@ class Browser(QMainWindow):
                     
                     if text_label:
                         text_label.setStyleSheet(f"color: {self.hexval}")
-
-
-        #run through key value pair and map to button name then swap rgb or hsv values
-        print(f"button stuff: {eColsButton}")
-        print(f"style stuff: {eColsStyle}")
-        
 
 
 
@@ -1025,56 +1021,69 @@ class Browser(QMainWindow):
         #actual logic - refresh cookie dictionary each time a new one is added
         cookiedict = self.cookieManager.on_cookie_added(cookie)
         self.cookiedict = cookiedict
-    
+
     def cookieGUI(self):
+        # 1. Clear existing content safely
         self.cookieMenu.clear()
 
-        #Check if cookiedict exists to avoid crashes
         if not hasattr(self, 'cookiedict') or not self.cookiedict:
             self.cookieMenu.addAction("No cookies detected yet.")
-            print("no cookies detected or error in loading")
             return
-        
-        for action in self.cookieMenu.actions():
-            self.cookieMenu.removeAction(action)
-            action.deleteLater()
+
+        # 2. Reusable styling (Move outside the loop for efficiency)
+        colour_rgb_str = f"rgb({self.light_rgb_tuple[0]}, {self.light_rgb_tuple[1]}, {self.light_rgb_tuple[2]})"
+        self.cookieMenu.setStyleSheet(f"QMenu {{ background-color: {self.hexval}; border-radius: 10px; padding: 5px; }}")
 
         for cookieID, value in self.cookiedict.items():
-            #Container widget for the row
             cookie_row = QWidget()
-            layout = QHBoxLayout(cookie_row)
-            layout.setContentsMargins(10, 2, 10, 2)
-            layout.setSpacing(10)
-
-            #Labels
-            name_label = QLabel(value["name"])
-            name_label.setMinimumWidth(100)
-            predict_label = QLabel(f"({value['prediction']})")
-            predict_label.setStyleSheet("color: gray; font-size: 10px;")
+            cookie_row.setObjectName("CookieRow")
+            cookie_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
             
+            layout = QHBoxLayout(cookie_row)
+            layout.setContentsMargins(10, 5, 10, 5)
+            
+            # UI Elements
+            name = value["name"][:15] + "..." if len(value["name"]) > 15 else value["name"]
+            name_label = QLabel(name)
+            predict_label = QLabel(f"({value['prediction']})")
+            predict_label.setStyleSheet(f"color: {self.hexval}; font-size: 10px;")
+            
+            # Buttons with "Stay Open" Logic
+            btn_accept = QPushButton("✓")
+            btn_deny = QPushButton("✕")
+            
+            for btn in [btn_accept, btn_deny]:
+                btn.setFixedSize(24, 24)
+                # Prevent the menu from closing when these specific buttons are clicked
+                btn.setAttribute(Qt.WidgetAttribute.WA_NoMousePropagation, False)
+
+            # Connect signals: Execute logic -> Refresh the whole menu list
+            btn_accept.clicked.connect(lambda _, id=cookieID: self.handle_cookie_action(id, "accept"))
+            btn_deny.clicked.connect(lambda _, id=cookieID: self.handle_cookie_action(id, "deny"))
+
             layout.addWidget(name_label)
             layout.addWidget(predict_label)
-            layout.addStretch() # Pushes buttons to the right
-
-            #Action Buttons (Standard QPushButtons work better inside the row)
-            btn_accept = QPushButton("✓")
-            btn_accept.setFixedSize(24, 24)
-            btn_accept.clicked.connect(lambda chk=False, id=cookieID: self.cookieManager.acceptCookie(id))
-
-            btn_deny = QPushButton("✕")
-            btn_deny.setFixedSize(24, 24)
-            btn_deny.clicked.connect(lambda chk=False, id=cookieID: self.cookieManager.cookieEVAPORATOR(id))
-
+            layout.addStretch()
             layout.addWidget(btn_accept)
             layout.addWidget(btn_deny)
 
-            #QWidgetAction to host the row in the menu
+            cookie_row.setStyleSheet(f"#CookieRow {{ background-color: {colour_rgb_str}; border-radius: 6px; }}")
+
+            # Add to Menu
             container_action = QWidgetAction(self.cookieMenu)
             container_action.setDefaultWidget(cookie_row)
-            
             self.cookieMenu.addAction(container_action)
-            self.cookieMenu.update()
-            self.cookieMenu.repaint()
+
+    def handle_cookie_action(self, cookieID, action_type):
+        """Helper to process data and force a refresh while menu is open."""
+        if action_type == "accept":
+            self.cookieManager.acceptCookie(cookieID)
+        else:
+            self.cookieManager.cookieEVAPORATOR(cookieID)
+        
+        # Crucial: Re-run the GUI builder to update the list immediately
+        self.cookieGUI() 
+
 
 
 

@@ -75,6 +75,8 @@ class CookieManager:
                 for key, value in self.pending_cookies.items():
                     if value["prediction"] == "Functional/Preference" or value["prediction"] == "Advertising" or value["prediction"] == "Analytics (Tracking)":
                         self.cookieEVAPORATOR(key)
+                    else:
+                        pass
             except RuntimeError:
                 return
         else:
