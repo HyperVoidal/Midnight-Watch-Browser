@@ -46,7 +46,9 @@ class CookieManager:
             self.pending_cookies[origin] = []
 
         return True
-
+    
+    def refresh_cookie_list(self):
+        return self.pending_cookies
 
 
     def on_cookie_added(self, cookie):

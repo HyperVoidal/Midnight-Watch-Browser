@@ -84,6 +84,10 @@ if "Cookie-Prediction-Sensitivity" in toggles.keys():
     global sensitivity
     sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive
 
+if "Cookie-Accept/Deny On Leave" in toggles.keys():
+    global siteLeaveCookies
+    siteLeaveCookies = toggles["Cookie-Accept/Deny On Leave"] #0 for remove all, 1 for accept all
+
 # ---- MAIN FUNCTIONS ----
 
 #value clamper
@@ -208,6 +212,7 @@ class Browser(QMainWindow):
         self.tabs.tabBar().setStyleSheet("QTabBar::tab { height: 30px; width: 150px; }")
         self.setCentralWidget(self.tabs)
         self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+        self.tabs.setTabsClosable(True)
 
         self.nav_bar = QToolBar("Navigation")
         self.addToolBar(self.nav_bar)
@@ -485,9 +490,20 @@ class Browser(QMainWindow):
     
     def close_tab(self, index):
         if self.tabs.count() > 1:
+            #manage all remaining cookies based on settings preferences
+            target_tab = self.tabs.widget(index)
+            if target_tab:
+                target_url = target_tab.url().toString()
+                for key, data in list(self.cookiedict.items()):
+                    if data["domain"] in target_url:
+                        if siteLeaveCookies:
+                            self.cookieManager.acceptCookie(key)
+                        else:
+                            self.cookieManager.cookieEVAPORATOR(key)
+
             self.tabs.removeTab(index)
         else:
-            self.close()  # Exit if last tab closed
+            self.close()
 
     def switch_tab(self, index):
         current_browser = self.tabs.widget(index)
@@ -545,6 +561,7 @@ class Browser(QMainWindow):
         CosmeticBlocker.inject_css(browser)
         ScriptletBlocker.inject_scriptlets(browser)
         pass
+        
     
     def set_engine(self, key):
         global engine
@@ -903,7 +920,7 @@ class Browser(QMainWindow):
             layout.addWidget(name_label)
             layout.addStretch() # Pushes the checkbox to the right
 
-            # Checkbox (The new toggle)
+            # Checkbox
             check = QCheckBox()
             live_extensions = self.ext_manager.extensions()
             # Generator to find the match (handles the NoneType bug by checking 'ext is not None')
@@ -937,7 +954,8 @@ class Browser(QMainWindow):
     def toggle_extension(self, ext_id, checked, json_path):
         #using any reference to self.ext_manager.extensions() to track the list of active extensions triggers a bug in qt's C++ -> python wrapper
         #As a result, I'm making my own list in the active/inactive readings on extensionList.json()
-        #SBKconverter issue for C++ to Python conversion is likely to be unpatched until the next release, which could be months, so I need to build this myself
+        #SBKconverter issue for C+Accepted+ to Python conversion is likely to be unpatched until the next release, which could be months, so I need to build this myself
+        
         #update JSON Registry
         with open(json_path, "r") as f:
             data = json.load(f)
@@ -1020,8 +1038,7 @@ class Browser(QMainWindow):
         domain = cookie.domain()
         value = cookie.value().data().decode()
         #actual logic - refresh cookie dictionary each time a new one is added
-        cookiedict = self.cookieManager.on_cookie_added(cookie)
-        self.cookiedict = cookiedict
+        self.cookiedict = self.cookieManager.on_cookie_added(cookie)
 
 
     def cookieGUI(self):
@@ -1088,8 +1105,8 @@ class Browser(QMainWindow):
             btn_accept = QPushButton("✓")
             btn_deny = QPushButton("✕")
 
-            btn_accept.setStyleSheet(f"background-color: {self.hexval}; colour: {row_colour};")
-            btn_deny.setStyleSheet(f"background-color: {self.hexval}; colour: {row_colour};")
+            btn_accept.setStyleSheet(f"background-color: {self.hexval}; color: {row_colour};")
+            btn_deny.setStyleSheet(f"background-color: {self.hexval}; color: {row_colour};")
             
             # Connect buttons (using the handle_cookie_action from previous step)
             btn_accept.clicked.connect(lambda _, id=cookieID: self.handle_cookie_action(id, "accept"))
@@ -1125,6 +1142,7 @@ class Browser(QMainWindow):
             self.cookieManager.cookieEVAPORATOR(cookieID)
         
         #Re-Run gui builder
+        self.cookieManager.refresh_cookie_list()
         self.cookieMenu.adjustSize()
         self.cookieGUI() 
 

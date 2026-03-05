@@ -1,5 +1,6 @@
 {
     "DNS-over-HTTPS": true,
     "Encrypted-Client Hello": true,
-    "Cookie-Prediction-Sensitivity": 0
+    "Cookie-Prediction-Sensitivity": 0,
+    "Cookie-Accept/Deny On Leave": 1
 }
