@@ -88,6 +88,9 @@ if "Cookie-Accept/Deny On Leave" in toggles.keys():
     global siteLeaveCookies
     siteLeaveCookies = toggles["Cookie-Accept/Deny On Leave"] #0 for remove all, 1 for accept all
 
+if toggles["Save-Tabs-On-Restart"]:
+    saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
+
 # ---- MAIN FUNCTIONS ----
 
 #value clamper
@@ -155,15 +158,19 @@ class Browser(QMainWindow):
         global eColsStyle
         global eColsButton
         global sensitivity
+
+
+        #Bars
         self.url_bar = QLineEdit()
         eColsStyle.append("url_bar")
+        #add a bookmarks bar here at some point
+
         self.user = "mainUser" #make a system for this at some point!!!from PySide6.QtWebEngineCore import QWebEngineProfile
 
         
         self.profile = QWebEngineProfile("PersistentUser", self)
         self.current_browser = QWebEngineView(self)
         #self.profile.persistentCookiesPolicy() = True
-
 
         #settings system
         settings = self.profile.settings()
@@ -198,9 +205,7 @@ class Browser(QMainWindow):
         self.cookie_store.cookieAdded.connect(self.on_cookie_received)
         self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
 
-
-        self.main_path = Path(__file__).parent
-        self.home_path = self.main_path / "ui/homepage.html"
+        self.home_path = f"{srcSourceDir}/ui/homepage.html"
         self.tabs  = QTabWidget()
         self.tabs.setTabsClosable(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
@@ -211,7 +216,6 @@ class Browser(QMainWindow):
         # Apply sizing directly to the QTabBar so later per-widget stylesheets don't clobber it
         self.tabs.tabBar().setStyleSheet("QTabBar::tab { height: 30px; width: 150px; }")
         self.setCentralWidget(self.tabs)
-        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
         self.tabs.setTabsClosable(True)
 
         self.nav_bar = QToolBar("Navigation")
@@ -220,14 +224,11 @@ class Browser(QMainWindow):
         self.nav_bar.setStyleSheet("background:rgb(1, 1, 100)")
         eColsStyle.append("nav_bar")
 
-        #buttons
-
-        #url bar buttons - add one for enabling/disabling inbuilt adblock
         
 
         #main button constructors
         self.ButtonConstructor("back_btn", "Back", "back", "go_back")
-        self.ButtonConstructor("reload_btn", "Reload", "reload", "reload_page")
+        self.ButtonConstructor("reload_btn", "Reload", "reload", "reload_tab")
         self.ButtonConstructor("forward_btn", "Forward", "forward", "go_forward")
         self.ButtonConstructor("home_btn", "Home", "home", "go_home")
         self.ButtonConstructor("newtab_btn", "New Tab", "newtab", "new_tab")
@@ -252,12 +253,12 @@ class Browser(QMainWindow):
         self.ColourMenu = QMenu(self)
 
         #define starter profile. Need to do this more elegantly at some point since the profile selection doesn't even start at this it's just a placeholder
-        with open (f'{self.main_path}/data/userData.json', "r") as f:
+        with open (f'{srcSourceDir}/data/userData.json', "r") as f:
             Udata = dict(json.load(f))
         self.selectedprofile = (dict(Udata[self.user]))["ColourProfile"]
         print(self.selectedprofile)
 
-        with open (f"{self.main_path}/data/colourProfiles.json", "r") as f:
+        with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
             Colourdata = dict(json.load(f))
         
         for key in Colourdata.keys():
@@ -405,6 +406,93 @@ class Browser(QMainWindow):
 
 
 
+        #Actions list using commands
+
+        #Quit command
+        exit_action = QAction("&Exit", self)
+        self.addAction(exit_action)
+        exit_action.setShortcut(QKeySequence("Ctrl+Q"))
+        exit_action.triggered.connect(self.exit_app)
+
+        #Close tab command
+        tabclose_action = QAction("&Close &Tab", self)
+        self.addAction(tabclose_action)
+        tabclose_action.setShortcut(QKeySequence("Ctrl+W"))
+        tabclose_action.triggered.connect(self.close_tab)
+
+        #Add tab command
+        tabopen_action = QAction("&New &Tab", self)
+        self.addAction(tabopen_action)
+        tabopen_action.setShortcut(QKeySequence("Ctrl+T"))
+        tabopen_action.triggered.connect(self.add_new_tab)
+
+        #Reload tab command
+        tabreload_action = QAction("&Reload &Tab", self)
+        self.addAction(tabreload_action)
+        tabreload_action.setShortcut(QKeySequence("Ctrl+R"))
+        tabreload_action.triggered.connect(self.reload_tab)
+
+        #Mute tab command - need to actually build
+        """ tabmute_action = QAction("&Mute &Tab", self)
+        self.addAction(tabmute_action)
+        tabmute_action.setShortcut(QKeySequence("Ctrl+M"))
+        tabmute_action.triggered.connect(self.mute_tab) """
+
+
+
+
+
+
+
+
+        #Load all tabs from most recent shutdown if possible, then add a new tab after
+        if saveTabsOnRestart:
+            self.onStartup()
+        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+
+
+    def onStartup(self):
+        try:
+            with open(f"{srcSourceDir}/data/bootupTabs.json", "r") as f:
+                savetabs = json.load(f)
+                
+            for url, title in savetabs.items():
+                self.add_new_tab(QUrl(url), title)
+                
+        except Exception as e:
+            print("No tabs saved in startup OR an error has occurred.")
+            print("Report: ", e)
+    
+    def closeEvent(self, event):
+        if self.CloseConfirmation():
+            event.ignore()
+            print("Exit cancelled by user")
+        else:
+            self.exit_app()
+            event.accept()
+    
+    def CloseConfirmation(self):
+        reply = QMessageBox.question(self, 'Exit', 'Close Midnight Watch?',
+                                     QMessageBox.StandardButton.Yes |
+                                     QMessageBox.StandardButton.No)
+        return reply == QMessageBox.StandardButton.No
+
+    def exit_app(self):
+        if saveTabsOnRestart:
+            #save all urls to a json file for attempted re-opening on browser start
+            savetabs = {}
+            for tab in range (self.tabs.count()):
+                if "homepage.html" in self.tabs.widget(tab).url().toString():
+                    pass #skip new tab windows
+                else:
+                    savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
+                    print(f"Saving: {str(self.tabs.tabText(tab))}")
+            
+            with open(f"{srcSourceDir}/data/bootupTabs.json", "w") as f:
+                json.dump(savetabs, f)
+                
+        QApplication.quit()
+
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
         """Creates all buttons for navbar"""
         btn = QToolButton(self)
@@ -429,7 +517,7 @@ class Browser(QMainWindow):
 
     #button assignment functions
     def go_back(self): self.current_browser.back()
-    def reload_page(self): self.current_browser.reload()
+    def reload_tab(self): self.current_browser.reload()
     def go_forward(self): self.current_browser.forward()
     def go_home(self): self.current_browser.setUrl(QUrl.fromLocalFile(str(self.home_path)))
     def new_tab(self): self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
@@ -458,10 +546,13 @@ class Browser(QMainWindow):
 
     def current_browser(self):
         return self.tabs.currentWidget()
-
-    def add_new_tab(self, qurl=engine, label="New Tab"):
-        if qurl is None:
-            qurl = QUrl("https://www.google.com")
+    
+    def add_new_tab(self, qurl=None, label="New Tab"):
+        if qurl is None or isinstance(qurl, bool):
+            qurl = QUrl.fromLocalFile(f"{srcSourceDir}/ui/homepage.html")
+        
+        if isinstance(qurl, tuple):
+            qurl = qurl[0]
         
         browser = QWebEngineView()
         new_page = QWebEnginePage(self.profile, browser)
@@ -595,11 +686,11 @@ class Browser(QMainWindow):
         print(datalist)
 
         #adjust user profile colour selection
-        with open (f"{self.main_path}/data/userData.json", "r") as f:
+        with open (f"{srcSourceDir}/data/userData.json", "r") as f:
             dataedit = json.load(f)
         (dict(dataedit["mainUser"]))["ColourProfile"] = profile
         dataedit["mainUser"]["ColourProfile"] = profile
-        with open (f"{self.main_path}/data/userData.json", "w") as f:
+        with open (f"{srcSourceDir}/data/userData.json", "w") as f:
             json.dump(dataedit, f)
             
 
@@ -873,7 +964,7 @@ class Browser(QMainWindow):
 
         # Add only if on webstore
         if is_webstore:
-            with open(f"{self.main_path}/data/colourProfiles.json", "r") as f:
+            with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
                 Colourdata = json.load(f)
                 colour = Colourdata[self.selectedprofile]["ext_btn"]
             buttoncolourer("extdown_btn", colour)
@@ -954,7 +1045,7 @@ class Browser(QMainWindow):
     def toggle_extension(self, ext_id, checked, json_path):
         #using any reference to self.ext_manager.extensions() to track the list of active extensions triggers a bug in qt's C++ -> python wrapper
         #As a result, I'm making my own list in the active/inactive readings on extensionList.json()
-        #SBKconverter issue for C+Accepted+ to Python conversion is likely to be unpatched until the next release, which could be months, so I need to build this myself
+        #SBKconverter issue for C++ to Python conversion is likely to be unpatched until the next release, which could be months, so I need to build this myself
         
         #update JSON Registry
         with open(json_path, "r") as f:
@@ -1008,6 +1099,7 @@ class Browser(QMainWindow):
         self.current_browser.reload() 
 
     def finalise_permissions(self, ext_id, name):
+        
         selections = [("Accept", QDialog.Accepted), ("Deny", QDialog.Rejected)]
         selectaccess = self.PopupSystem(self.current_browser, "Extension Manager", f"Grant Javascript permissions to {name}?", selections)
         

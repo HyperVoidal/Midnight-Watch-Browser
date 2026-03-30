@@ -1,4 +1,19 @@
 {
+    "Secured Blue": {
+        "back_btn": "(75, 126, 215)",
+        "reload_btn": "(60, 100, 180)",
+        "colourPalette_btn": "(255, 200, 65)",
+        "newtab_btn": "(55, 95, 175)",
+        "home_btn": "(255, 235, 120)",
+        "forward_btn": "(75, 126, 215)",
+        "ext_btn": "(255, 200, 65)",
+        "cookie_btn": "(210, 165, 50)",
+        "url_bar": "(255, 255, 255)",
+        "tabs": "(15, 20, 45)",
+        "nav_bar": "(25, 45, 110)",
+        "tab_backer": "(25, 45, 110)"
+        
+    },
     "Pastel Breeze": { 
         "back_btn": "(182, 220, 241)",
         "reload_btn": "(245, 203, 225)",

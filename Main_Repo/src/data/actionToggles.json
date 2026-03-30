@@ -2,5 +2,6 @@
     "DNS-over-HTTPS": true,
     "Encrypted-Client Hello": true,
     "Cookie-Prediction-Sensitivity": 0,
-    "Cookie-Accept/Deny On Leave": 1
+    "Cookie-Accept/Deny On Leave": 0,
+    "Save-Tabs-On-Restart": 1
 }
