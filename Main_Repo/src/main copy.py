@@ -1,6 +1,6 @@
 import sys
 import warnings
-from PySide6.QtCore import QUrl 
+from PySide6.QtCore import QUrl, QTimer
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -17,7 +17,7 @@ import os
 from PIL import Image, ImageOps
 import json
 from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker
-from extensionmanager import *
+from extensionmanager import ExtensionManager, ExtensionLoaderCore
 from ui_core import *
 from cookieManager import CookieManager
 
@@ -26,6 +26,15 @@ from cookieManager import CookieManager
 
 #Tweaking extension support with schemes, environment variables, and profile settings
 os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-features=ExtensionManifestV2Unsupported,ExtensionManifestV2Disabled"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--enable-service-workers --no-sandbox --enable-experimental-extension-apis"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--allow-insecure-localhost --disable-features=BlockInsecurePrivateNetworkRequests"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--enable-features=AllowInsecureLocalhost,ServiceWorkerThirdPartyOrigin,SharedArrayBuffer,ExperimentalExtensionApis"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--run-all-compositor-stages-before-draw"
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--enable-features=SharedArrayBuffer,ExperimentalExtensionApis,AllowInsecureLocalhost,ServiceWorkerThirdPartyOrigin"
+
+os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
+# Tell Qt to allow workers on all schemes globally
+os.environ["QTWEBENGINE_SERVICE_WORKERS_ALLOWED"] = "1"
 
 #Icon cache 
 icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
@@ -91,6 +100,9 @@ if "Cookie-Accept/Deny On Leave" in toggles.keys():
 if "Save-Tabs-On-Restart" in toggles.keys():
     saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
 
+#enable service workers
+sys.argv.append("--enable-service-workers")
+
 # ---- MAIN FUNCTIONS ----
 
 #value clamper
@@ -150,6 +162,7 @@ def buttoncolourer(k, v):
     coloured.save(colouredpath, format='PNG')
     return colouredpath
 
+
 class Browser(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -159,18 +172,26 @@ class Browser(QMainWindow):
         global eColsButton
         global sensitivity
 
+        #service worker data directory
+        base_path = os.path.abspath("./Browser_Data")
+        profile_path = os.path.join(base_path, "User_Profile")
+        cache_path = os.path.join(base_path, "User_Cache")
 
-        #Bars
-        self.url_bar = QLineEdit()
-        eColsStyle.append("url_bar")
-        #add a bookmarks bar here at some point
+        # Ensure these exist before the profile tries to use them
+        os.makedirs(profile_path, exist_ok=True)
+        os.makedirs(cache_path, exist_ok=True)
 
+        #Profile Setup
         self.user = "mainUser" #make a system for this at some point!!!from PySide6.QtWebEngineCore import QWebEngineProfile
 
-        
         self.profile = QWebEngineProfile("PersistentUser", self)
         self.current_browser = QWebEngineView(self)
         #self.profile.persistentCookiesPolicy() = True
+        self.profile.setHttpUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+        #enabling service worker systems for profile
+        #self.profile.setPersistentStoragePath(profile_path)
+        self.profile.setCachePath(cache_path)
 
         #settings system
         settings = self.profile.settings()
@@ -178,23 +199,15 @@ class Browser(QMainWindow):
         settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         settings.setAttribute(settings.WebAttribute.AllowRunningInsecureContent, True)
         #Allows important sandboxing similar to Chrome. NEVER ENABLE THIS, IT LETS FILEPAGE JAVASCRIPT READ FILE HEADERS ON PC
-        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, False)
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         #Would be good but I need javascript actually working
         settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
         #Avoid giving instant clipboard access
         settings.setAttribute(settings.WebAttribute.JavascriptCanAccessClipboard, False)
+        #Allow sound playing without user input
+        settings.setAttribute(settings.WebAttribute.PlaybackRequiresUserGesture, False)
 
-
-        #Data storage management - future plans to use this for history saving and long term cookie storage/removal choices for users
-        base_path = os.path.abspath("./Main_Repo/src/data/Browser_Data")
-        profile_path = os.path.join(base_path, "User_Profile")
-        cache_path = os.path.join(base_path, "User_Cache")
-
-        os.makedirs(profile_path, exist_ok=True)
-        os.makedirs(cache_path, exist_ok=True)
-
-        self.profile.setCachePath(cache_path)
-        self.profile.setPersistentStoragePath(profile_path)
 
 
 
@@ -203,20 +216,35 @@ class Browser(QMainWindow):
         #Adblock interceptor
         self.interceptor = AdInterceptor()
         self.profile.setUrlRequestInterceptor(self.interceptor)
-        
 
-        #Extension manager
+
+
+
+        #Extension manager - INTEGRATED LOADER
         self.ext_manager = self.profile.extensionManager()
+        self.extension_loader = ExtensionLoaderCore(self.ext_manager)
         self.extman_instance = ExtensionManager(self.ext_manager)
-        
+
 
         #Initialise cookie jar (Cookie management)
         self.cookieManager = CookieManager(self.profile, sensitivity)
         self.cookie_store = self.profile.cookieStore()
-        self.cookie_store.deleteAllCookies()
+        #self.cookie_store.deleteAllCookies()
         self.cookie_store.loadAllCookies() 
         self.cookie_store.cookieAdded.connect(self.on_cookie_received)
         self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
+
+
+
+
+
+        #UI CUSTOMISATION
+
+
+        #Bars
+        self.url_bar = QLineEdit()
+        eColsStyle.append("url_bar")
+        #add a bookmarks bar here at some point
 
         self.home_path = f"{srcSourceDir}/ui/homepage.html"
         self.tabs  = QTabWidget()
@@ -458,24 +486,23 @@ class Browser(QMainWindow):
 
 
 
-        #Load all tabs from most recent shutdown if possible, then add a new tab after
-        if saveTabsOnRestart:
-            self.onStartup()
-        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
-
-
+        #Startup function
+        self.onStartup()
+        
     def onStartup(self):
         #Load all tabs from most recent shutdown if possible, then add a new tab after
-        try:
-            with open(f"{srcSourceDir}/data/bootupTabs.json", "r") as f:
-                savetabs = json.load(f)
-                
-            for url, title in savetabs.items():
-                self.add_new_tab(QUrl(url), title)
-                
-        except Exception as e:
-            print("No tabs saved in startup OR an error has occurred.")
-            print("Report: ", e)
+        if saveTabsOnRestart:
+            try:
+                with open(f"{srcSourceDir}/data/bootupTabs.json", "r") as f:
+                    savetabs = json.load(f)
+                    
+                for url, title in savetabs.items():
+                    self.add_new_tab(QUrl(url), title)
+                    
+            except Exception as e:
+                print("No tabs saved in startup OR an error has occurred.")
+                print("Report: ", e)
+        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
 
         # Load all enabled extensions from extensionList.json
         json_path = Path(srcSourceDir) / "data/extensionList.json"
@@ -488,22 +515,30 @@ class Browser(QMainWindow):
             with open(json_path, "r") as f:
                 extensions_data = json.load(f)
             
-            for ext_id, info in extensions_data.items():
-                ext_path = Path(info["path"])
-                is_enabled = info.get("enabled", True)
-                
-                # Only load if enabled and path exists
-                if is_enabled and ext_path.exists():
-                    self.ext_manager.loadExtension(str(ext_path))
-                    print(f"Loaded extension: {ext_id} from {ext_path}")
-                else:
-                    print(f"Skipped extension: {ext_id} (enabled={is_enabled}, exists={ext_path.exists()})")
+            extensions_to_load = list(extensions_data.items())
+            self.sequentialExtLoad(extensions_to_load)
         
         except Exception as e:
             print(f"Error loading extensions: {e}")
-        
-
     
+    def sequentialExtLoad(self, ext_list):
+        if not ext_list:
+            return
+
+        ext_id, info = ext_list.pop(0)
+        ext_path = Path(info["path"])
+        
+        if info.get("enabled", True) and ext_path.exists():
+            print(f"⏳ Loading extension: {ext_path.name}...")
+            ext_info = self.extension_loader.load_extension(str(ext_path))
+            if ext_info:
+                QTimer.singleShot(1500, lambda: self.finalize_extension_load(ext_info["name"]))
+        
+        # Wait before loading the NEXT extension to prevent I/O congestion
+        QTimer.singleShot(1200, lambda: self.sequentialExtLoad(ext_list))
+
+
+
     def closeEvent(self, event):
         if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
             self.exit_app()
@@ -606,7 +641,7 @@ class Browser(QMainWindow):
         i = self.tabs.addTab(browser, label)
 
         self.tabs.setCurrentIndex(i)
-
+        
         if hasattr(self, 'contrast_qcolor'):
             self.tabs.tabBar().setTabTextColor(i, self.contrast_qcolor)
 
@@ -1007,7 +1042,8 @@ class Browser(QMainWindow):
 
         for ext_id, info in extensions_data.items():
             ext_path = Path(info["path"])
-            if not ext_path.exists(): continue
+            if not ext_path.exists(): 
+                continue
 
             with open(ext_path / "manifest.json", "r") as m:
                 manifest = json.load(m)
@@ -1017,13 +1053,12 @@ class Browser(QMainWindow):
             layout.setContentsMargins(5, 2, 5, 2)
 
             #Check for Popup (Manifest V3 'action')
-            popup_file = manifest.get("action", {}).get("default_popup")
+            popup_file = manifest.get("action", {}).get("default_popup") or \
+                        manifest.get("browser_action", {}).get("default_popup")
             
             #Check for Options Page
             options_file = manifest.get("options_ui", {}).get("page") or \
                            manifest.get("options_page")
-
-
 
             #Create a Flat Button for Icon + Name
             name_btn = QPushButton(info.get("name", ext_id))
@@ -1036,6 +1071,7 @@ class Browser(QMainWindow):
                 }
                 QPushButton:hover { background: #eeeeee; }
             """)
+            
             #Set Icon
             icons = manifest.get("icons", {})
             icon_file = icons.get("32") or icons.get("48") or icons.get("128") or icons.get("16")
@@ -1043,72 +1079,59 @@ class Browser(QMainWindow):
                 name_btn.setIcon(QIcon(str(ext_path / icon_file)))
                 name_btn.setIconSize(QSize(18, 18))
 
-            #CPass captured variables using default arguments
             name_btn.clicked.connect(
                 lambda _, e_id=ext_id, p=popup_file, o=options_file: 
                 self.open_extension_options(e_id, p, o)
             )
 
-            layout.addWidget(name_btn, 1) # Stretch factor 1 to take available space
-
-
-
-
+            layout.addWidget(name_btn, 1)
 
             #Checkbox
             check = QCheckBox()
-            #Generator to find the match (handles the NoneType bug by checking 'ext is not None')
             live_extensions_info = self.ext_manager.extensions()
-            # Find the info object first
-            info_obj = next((info for info in live_extensions_info if info is not None and info.id == ext_id), None)
+            info_obj = next((ext for ext in live_extensions_info if ext is not None and ext.id() == ext_id), None)
 
+            # Check if extension is enabled using object state, not extensionStatus()
             if info_obj:
-                # Use the ID from the info object to get the actual extension status from the manager
-                is_enabled = self.ext_manager.extensionStatus(info_obj.id) == QWebEngineExtensionManager.Enabled
+                # If the extension object exists and is loaded, it's enabled
+                is_enabled = True
             else:
+                # Fall back to JSON registry
                 is_enabled = info.get("enabled", True)
+            
             check.setChecked(is_enabled)
 
-
-            
-            #Connect the toggle to both the engine and JSON persistence
             check.toggled.connect(lambda checked, eid=ext_id: self.toggle_extension(eid, checked, json_path))
-            
             layout.addWidget(check)
 
             action = QWidgetAction(self.ext_menu)
             action.setDefaultWidget(ext_widget)
             self.ext_menu.addAction(action)
 
-
-        pass
-    
-
     def open_extension_options(self, ext_id, popup_file, options_file):
-        """Better extension loading with validation"""
+        """Load extension UI with deferred timing"""
         self.ext_menu.close()
 
         def _deferred_open():
-            # Force a fresh load if not already loaded
             json_path = Path(srcSourceDir) / "data/extensionList.json"
             with open(json_path, "r") as f:
                 ext_data = json.load(f)
             
             if ext_id not in ext_data:
-                print(f"ERROR: {ext_id} not in registry")
+                print(f"❌ Extension {ext_id} not in registry")
                 return
             
             ext_path = ext_data[ext_id].get("path")
             if not Path(ext_path).exists():
-                print(f"ERROR: Path doesn't exist: {ext_path}")
+                print(f"❌ Path doesn't exist: {ext_path}")
                 return
             
             # Try loading if not already loaded
             loaded_ids = [ext.id() for ext in self.ext_manager.extensions() if ext is not None]
             if ext_id not in loaded_ids:
-                print(f"Extension not loaded, attempting load from: {ext_path}")
-                self.ext_manager.loadExtension(str(ext_path))
-                QTimer.singleShot(500, lambda: self._open_extension_ui(ext_id, popup_file, options_file))
+                print(f"Loading extension from: {ext_path}")
+                self.extension_loader.load_extension(ext_path)
+                QTimer.singleShot(800, lambda: self._open_extension_ui(ext_id, popup_file, options_file))
                 return
             
             self._open_extension_ui(ext_id, popup_file, options_file)
@@ -1116,8 +1139,7 @@ class Browser(QMainWindow):
         QTimer.singleShot(100, _deferred_open)
 
     def _open_extension_ui(self, ext_id, popup_file, options_file):
-        """Separated UI opening logic"""
-        # Find the actual extension object by ID
+        """Separated UI opening logic - now matches by ID from registry"""
         ext_info = None
         for ext in self.ext_manager.extensions():
             if ext and ext.id() == ext_id:
@@ -1125,11 +1147,12 @@ class Browser(QMainWindow):
                 break
         
         if not ext_info:
-            print(f"ERROR: Could not find extension object for {ext_id}")
+            print(f"❌ Could not find extension object for {ext_id}")
+            print(f"DEBUG: Available extensions: {[ext.id() for ext in self.ext_manager.extensions() if ext]}")
             return
         
-        # Now pass the object, not the string
-        self.ext_manager.setExtensionEnabled(ext_info, True)
+        # Enable the extension object (not reload)
+        self.extension_loader.enable_extension(ext_info)
         
         if popup_file:
             url = f"chrome-extension://{ext_id}/{popup_file}"
@@ -1158,12 +1181,12 @@ class Browser(QMainWindow):
             self.add_new_tab(QUrl(url), "Extension Settings")
 
     def toggle_extension(self, ext_id, checked, json_path):
-        """Fixed extension loading with better error handling"""
+        """Fixed extension loading with registry sync"""
         with open(json_path, "r") as f:
             data = json.load(f)
         
         if ext_id not in data: 
-            print(f"ERROR: Extension {ext_id} not found in registry")
+            print(f"❌ Extension {ext_id} not found in registry")
             return
         
         data[ext_id]["enabled"] = checked
@@ -1175,38 +1198,57 @@ class Browser(QMainWindow):
         ext_path = data[ext_id]["path"]
         
         if checked:
-            # Verify path exists before loading
             if not Path(ext_path).exists():
-                print(f"ERROR: Extension path does not exist: {ext_path}")
+                print(f"❌ Extension path does not exist: {ext_path}")
                 return
             
             print(f"Loading extension from: {ext_path}")
-            self.ext_manager.loadExtension(str(ext_path))
-            
-            # Wait longer for extension to fully load
-            QTimer.singleShot(1000, lambda: self.finalise_permissions(ext_id, name))
+            ext_info = self.extension_loader.load_extension(ext_path)
+            if ext_info:
+                # Defer to allow extension to register
+                QTimer.singleShot(1200, lambda n=name: 
+                                 self.finalize_extension_load(n))
         else:
-            for ext_info in self.ext_manager.extensions():
-                if ext_info and ext_info.id == ext_id:
-                    self.ext_manager.unloadExtension(ext_info.id)
-                    print(f"Unloaded: {name}")
-                    break
+            ext_obj = self.extension_loader.find_extension_by_id(ext_id)
+            if ext_obj:
+                self.ext_manager.unloadExtension(ext_id)
+                print(f"✅ Unloaded: {name}")
         
         self.current_browser.reload()
 
-    def finalise_permissions(self, ext_id, name):
-        if self.WindowConfirmation("Extension Manager", f"Grant permissions to {name}?"):
-            try:
-                for ext_info in self.ext_manager.extensions():
-                    if ext_info and ext_info.id() == ext_id:
-                        self.ext_manager.setExtensionEnabled(ext_info, True)
-                        ext_info.setAllowedOnAnySite(True)
-                        print(f"Granted permissions to {name}")
-                        return
-            except Exception as e:
-                print(f"Error granting permissions: {e}")
+    def finalize_extension_load(self, resolved_name):
+        """Finalize extension after load by resolved name"""
+        # Find by display name instead of ID
+        ext_obj = self.extension_loader.find_extension_by_name(resolved_name)
+        if ext_obj:
+            # Enable the extension object (don't reload it)
+            self.extension_loader.enable_extension(ext_obj)
+            # Update the registry with the correct ID
+            self.update_extension_registry(ext_obj.id(), resolved_name)
+            print(f"Successfully enabled: {resolved_name} (ID: {ext_obj.id()})")
+        else:
+            print(f"Could not find extension: {resolved_name}")
 
-
+    def update_extension_registry(self, actual_id, resolved_name):
+        """Update extensionList.json with the correct extension ID"""
+        json_path = Path(srcSourceDir) / "data/extensionList.json"
+        try:
+            with open(json_path, "r") as f:
+                data = json.load(f)
+            
+            # Find entry by name and update ID if different
+            for ext_id, info in list(data.items()):
+                if info.get("name") == resolved_name and ext_id != actual_id:
+                    print(f"Updating registry: {ext_id} → {actual_id}")
+                    data[actual_id] = data.pop(ext_id)
+                    data[actual_id]["id"] = actual_id
+                    break
+            
+            with open(json_path, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            print(f"Could not update registry: {e}")
+            
     def on_cookie_received(self, cookie):
         #these three aren't technically doing anything but they're good references for later
         name = cookie.name().data().decode(errors='ignore')

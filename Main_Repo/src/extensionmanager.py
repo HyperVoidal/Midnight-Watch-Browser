@@ -214,7 +214,101 @@ class ExtensionManager():
             return {}
         
         with open(json_path, "r") as f:
-            return json.load(f) # Returns the dict for your UI loop
+            return json.load(f) # Returns the dict for the UI loop
 
         
         return extensionsDict
+
+
+class ExtensionLoaderCore:
+    """Centralized extension loading with locale support"""
+    
+    def __init__(self, ext_manager):
+        self.ext_manager = ext_manager
+        self.active_extensions = {}
+        self.loaded_extensions = {}  # Store mapping of resolved_name -> ext_id
+    
+    @staticmethod
+    def resolve_locale_name(ext_path, manifest, raw_name):
+        """Reads _locales/en/messages.json to resolve __MSG_extName__ format"""
+        if not raw_name.startswith("__MSG_") or not raw_name.endswith("__"):
+            return raw_name
+        
+        key = raw_name.replace("__MSG_", "").replace("__", "")
+        default_locale = manifest.get("default_locale", "en")
+        candidates = [default_locale, "en", "en_US"]
+        
+        for loc in candidates:
+            msg_path = ext_path / "_locales" / loc / "messages.json"
+            if msg_path.exists():
+                try:
+                    with open(msg_path, "r", encoding="utf-8") as f:
+                        msgs = json.load(f)
+                    if key in msgs:
+                        return msgs[key]["message"]
+                except:
+                    continue
+        
+        return raw_name
+    
+    def load_extension(self, ext_path):
+        """Load extension with manifest parsing and locale resolution"""
+        target = Path(ext_path).resolve()
+        if not target.exists():
+            print(f"❌ Extension path not found: {target}")
+            return None
+        
+        manifest_path = target / "manifest.json"
+        if not manifest_path.exists():
+            print(f"❌ manifest.json missing in {target}")
+            return None
+        
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+            
+            raw_name = manifest.get("name", "Unknown")
+            resolved_name = self.resolve_locale_name(target, manifest, raw_name)
+            
+            popup = manifest.get("action", {}).get("default_popup") or \
+                    manifest.get("browser_action", {}).get("default_popup") or "index.html"
+            
+            print(f"⏳ Loading extension: {resolved_name}...")
+            self.ext_manager.loadExtension(str(target))
+            
+            return {
+                "path": str(target),
+                "name": resolved_name,
+                "popup": popup,
+                "manifest": manifest
+            }
+        
+        except Exception as e:
+            print(f"❌ Failed to load extension: {e}")
+            return None
+    
+    def find_extension_by_name(self, resolved_name):
+        """Find loaded extension object by resolved display name"""
+        all_extensions = self.ext_manager.extensions()
+        for ext in all_extensions:
+            if ext and ext.name() == resolved_name:
+                return ext
+        return None
+    
+    def find_extension_by_id(self, ext_id):
+        """Find loaded extension object by extension ID"""
+        all_extensions = self.ext_manager.extensions()
+        for ext in all_extensions:
+            if ext and ext.id() == ext_id:
+                return ext
+        return None
+    
+    def enable_extension(self, ext_obj):
+        """Enable extension using object (not string ID)"""
+        try:
+            self.ext_manager.setExtensionEnabled(ext_obj, True)
+            print(f"✅ Extension enabled: {ext_obj.name()}")
+            return True
+        except Exception as e:
+            print(f"⚠️ Could not enable extension: {e}")
+            return False

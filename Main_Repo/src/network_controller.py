@@ -7,6 +7,11 @@ srcSourceDir = Path(__file__).parent
 class AdInterceptor(QWebEngineUrlRequestInterceptor):
     def interceptRequest(self, info):
         url = info.requestUrl().toString()
+        
+        # Don't block chrome-extension:// URLs (extension popups/options)
+        if url.startswith("chrome-extension://"):
+            return
+        
         source_url = info.firstPartyUrl().toString()
         
         # Pass the actual resource type from Qt
