@@ -35,3 +35,6 @@ CMakeLists.txt.user
 
 # Remove ext_cache components
 ext_cache/
+
+# Ignore new browser cache files
+Browser_Data/

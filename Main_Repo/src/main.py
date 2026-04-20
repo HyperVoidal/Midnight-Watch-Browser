@@ -4,7 +4,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineExtensionManager
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtCore import *
 from PySide6.QtGui import *
@@ -12,20 +12,19 @@ from PySide6.QtNetwork import QNetworkCookie, QNetworkCookieJar, QNetworkAccessM
 from PySide6.QtWebEngineCore import QWebEngineCookieStore
 from urllib.parse import urlparse
 from pathlib import Path
+import requests
 import urllib.request
 import os
 from PIL import Image, ImageOps
 import json
+import re
 from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker
-from extensionmanager import *
 from ui_core import *
 from cookieManager import CookieManager
 
 # Suppress PySide6 SbkConverter warnings for extension enumeration
 #warnings.filterwarnings("ignore", message=".*SbkConverter::copyToPython.*")
 
-#Tweaking extension support with schemes, environment variables, and profile settings
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--disable-features=ExtensionManifestV2Unsupported,ExtensionManifestV2Disabled"
 
 #Icon cache 
 icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
@@ -203,11 +202,7 @@ class Browser(QMainWindow):
         #Adblock interceptor
         self.interceptor = AdInterceptor()
         self.profile.setUrlRequestInterceptor(self.interceptor)
-        
 
-        #Extension manager
-        self.ext_manager = self.profile.extensionManager()
-        self.extman_instance = ExtensionManager(self.ext_manager)
         
 
         #Initialise cookie jar (Cookie management)
@@ -227,7 +222,11 @@ class Browser(QMainWindow):
         eColsStyle.append("tab_backer") #for background of tab bar!
         # default tab sizing (set once) to avoid repeated overrides
         # Apply sizing directly to the QTabBar so later per-widget stylesheets don't clobber it
-        self.tabs.tabBar().setStyleSheet("QTabBar::tab { height: 30px; width: 150px; }")
+        self.tabs.tabBar().setStyleSheet("QTabBar::tab { height: 30px; width: 200px; padding-left: 5px; padding-right: 5px; }")
+        # Force ellipsis to always appear on right side, prevents weird center→left clipping behavior
+        self.tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
+        self.tabs.tabBar().setExpanding(False)
+        self.tabs.tabBar().setUsesScrollButtons(True)
         self.setCentralWidget(self.tabs)
         self.tabs.setTabsClosable(True)
 
@@ -370,22 +369,6 @@ class Browser(QMainWindow):
 
         self.current_browser.urlChanged.connect((lambda q: self.url_bar.setText(q.toString())))
 
-        #Extensions Buttons
-        #create button
-        #on click button to open:         self.extman_instance.manager(), pull class from extensionmanager, list extensions, button to navigate to chrome web store, maybe one to open install location + autoloading??
-        eColsButton.append("ext_btn")
-        self.ext_btn = QToolButton(self)
-        self.ext_btn.setText("ext_btn")
-        self.ext_btn.setToolTip("See all extensions")
-        self.ext_menu = QMenu(self)
-        setattr(self, "ext_btn", self.ext_btn)
-
-        self.ext_btn.setMenu(self.ext_menu)
-        self.ext_btn.setIcon(get_normIcon("ext"))
-        self.ext_menu.aboutToShow.connect(self.extensionmanagement)
-        self.ext_btn.setPopupMode(QToolButton.InstantPopup)
-        self.nav_bar.addWidget(self.ext_btn)
-
 
         #Cookie Menu GUI
         eColsButton.append("cookie_btn")
@@ -452,72 +435,39 @@ class Browser(QMainWindow):
         tabmute_action.triggered.connect(self.mute_tab) """
 
 
+        #Run all browser startup triggers such as loading tabs from previous sessions, deploying js code, etc.
+        self.onStartup()
 
 
 
 
 
 
-        #Load all tabs from most recent shutdown if possible, then add a new tab after
-        if saveTabsOnRestart:
-            self.onStartup()
-        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
 
+    '''Startup and Shutdown functions'''
 
     def onStartup(self):
-        #Load all tabs from most recent shutdown if possible, then add a new tab after
-        try:
-            with open(f"{srcSourceDir}/data/bootupTabs.json", "r") as f:
-                savetabs = json.load(f)
-                
-            for url, title in savetabs.items():
-                self.add_new_tab(QUrl(url), title)
-                
-        except Exception as e:
-            print("No tabs saved in startup OR an error has occurred.")
-            print("Report: ", e)
-
-        # Load all enabled extensions from extensionList.json
-        json_path = Path(srcSourceDir) / "data/extensionList.json"
-        
-        if not json_path.exists():
-            print("No extensions registered yet")
-            return
-        
-        try:
-            with open(json_path, "r") as f:
-                extensions_data = json.load(f)
-            
-            for ext_id, info in extensions_data.items():
-                ext_path = Path(info["path"])
-                is_enabled = info.get("enabled", True)
-                
-                # Only load if enabled and path exists
-                if is_enabled and ext_path.exists():
-                    self.ext_manager.loadExtension(str(ext_path))
-                    print(f"Loaded extension: {ext_id} from {ext_path}")
-                else:
-                    print(f"Skipped extension: {ext_id} (enabled={is_enabled}, exists={ext_path.exists()})")
-        
-        except Exception as e:
-            print(f"Error loading extensions: {e}")
-        
-
-    
-    def closeEvent(self, event):
-        if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
-            self.exit_app()
-            event.accept()
+        #Load all tabs from most recent shutdown if possible
+        if saveTabsOnRestart:
+            try:
+                with open(f"{srcSourceDir}/data/bootupTabs.json", "r") as f:
+                    savetabs = json.load(f)
+                    
+                for url, title in savetabs.items():
+                    self.add_new_tab(QUrl(url), title)
+                    self.update_tab_icon(self.current_browser)
+                    
+            except Exception as e:
+                print("No tabs saved in startup OR an error has occurred.")
+                print("Report: ", e)
         else:
-            event.ignore()
-            print("Exit cancelled by user")
-            
-    
-    def WindowConfirmation(self, title, message):
-        reply = QMessageBox.question(self, title, message,
-                                     QMessageBox.StandardButton.No |
-                                     QMessageBox.StandardButton.Yes)
-        return reply == QMessageBox.StandardButton.Yes
+            pass
+        
+        #Add a default homepage window
+        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+        
+        #Update all tabs to the correct appearance
+        self.update_tab_icon(self.current_browser)
 
     def exit_app(self):
         if saveTabsOnRestart:
@@ -534,6 +484,60 @@ class Browser(QMainWindow):
                 json.dump(savetabs, f)
                 
         QApplication.quit()
+        
+
+
+
+
+
+
+
+    '''Main Events Handling'''
+
+    def closeEvent(self, event):
+        if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
+            self.exit_app()
+            event.accept()
+        else:
+            event.ignore()
+            print("Exit cancelled by user")
+    
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        
+        new_width = event.size().width()
+        old_width = event.oldSize().width()
+        
+        if new_width != old_width:
+            # Width changed - update tab sizes
+            self.update_tab_sizes()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not hasattr(self, '_tabs_sized'):
+            self.update_tab_sizes()
+            self._tabs_sized = True
+            
+
+
+
+
+
+    '''Window System'''
+
+    def WindowConfirmation(self, title, message):
+        reply = QMessageBox.question(self, title, message,
+                                     QMessageBox.StandardButton.No |
+                                     QMessageBox.StandardButton.Yes)
+        return reply == QMessageBox.StandardButton.Yes
+
+
+
+
+
+
+
+    '''Buttons and Icons'''
 
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
         """Creates all buttons for navbar"""
@@ -586,6 +590,13 @@ class Browser(QMainWindow):
         self.rotation_angle = 0
         self.reload_btn.setIcon(get_normIcon("reload"))
 
+
+
+
+
+
+    '''Tab Management'''
+
     def current_browser(self):
         return self.tabs.currentWidget()
     
@@ -611,6 +622,7 @@ class Browser(QMainWindow):
             self.tabs.tabBar().setTabTextColor(i, self.contrast_qcolor)
 
         # Connect signals
+        new_page.iconChanged.connect(lambda: self.update_tab_icon(browser))
         browser.urlChanged.connect(lambda qurl, browser=browser: self.update_tab_title(browser))
         browser.loadStarted.connect(self.start_reload_animation)
         browser.loadFinished.connect(lambda ok, b=browser: (self.stop_reload_animation(), self.on_load_finished(browser)))
@@ -619,8 +631,20 @@ class Browser(QMainWindow):
         
         if qurl.toString().endswith("homepage.html"):
             self.url_bar.setText("Homepage")
+
+        self.update_tab_sizes()
+        self.update_tab_icon(self.current_browser)
         return browser
     
+    def update_tab_icon(self, browser):
+        tab_index = self.tabs.indexOf(browser)
+        if tab_index != -1:
+            icon = browser.page().icon()
+            if not icon.isNull():  # Only set if icon actually loaded
+                self.tabs.setTabIcon(tab_index, icon)
+            else:
+                self.tabs.setTabIcon(tab_index, get_normIcon("tabIcon.png"))  # Set default icon if none
+                
     def close_tab(self, index):
         if self.tabs.count() > 1:
             #manage all remaining cookies based on settings preferences
@@ -637,6 +661,8 @@ class Browser(QMainWindow):
             self.tabs.removeTab(index)
         else:
             self.close()
+
+        self.update_tab_sizes()
 
     def switch_tab(self, index):
         current_browser = self.tabs.widget(index)
@@ -661,14 +687,46 @@ class Browser(QMainWindow):
             if title.endswith('homepage.html'):
                 title = 'Homepage'
 
-            if "https://chromewebstore.google.com/detail/" in title:
-                print("THEYRE ON THE WEB STORE ENTRY GETTEM RAHHHHHHHHH")
-                self.triggerExtensionsPopup(browser, browser.url().toString())
-
             self.tabs.setTabText(i, title)
             self.update_url_bar_buttons(browser.url().toString(), browser)
             
         pass
+
+    def calculate_tab_width(self):
+        # Get total available width
+        tab_bar_width = self.tabs.tabBar().width() #change this if I need more padding, though note that it will override once the tabs reach the smallest possible size
+        tab_bar_width = tab_bar_width - (tab_bar_width/12) #padding for scroll buttons and general breathing room, adjust as needed
+        tab_count = max(1, self.tabs.count())
+        
+        # Calculate width per tab
+        width_per_tab = tab_bar_width / tab_count
+        
+        # Apply min/max constraints (e.g., 100px minimum, 300px maximum)
+        min_width = 100
+        max_width = 200
+        final_width = clamp(width_per_tab, min_width, max_width)
+        
+        return final_width
+
+    def update_tab_sizes(self):
+        tab_width = self.calculate_tab_width()
+        tabbar = self.tabs.tabBar()
+        current_style = tabbar.styleSheet()
+        
+        # Remove any existing QTabBar::tab rules
+        cleaned_style = re.sub(
+            r'QTabBar::tab\s*\{[^}]*\}',
+            '',
+            current_style
+        )
+        
+        # Append fresh rule with new width
+        new_rule = f"QTabBar::tab {{ height: 30px; width: {int(tab_width)}px; }}"
+        final_style = cleaned_style + "\n" + new_rule
+        
+        tabbar.setStyleSheet(final_style)
+
+    '''URL Handling'''
 
     def load_url(self):
         #had to encase this in a try-except loop, there's an odd keyboardinterrupt error that is cased by virtually nothing and fixes by pressing enter again, this should circumvent.
@@ -693,7 +751,27 @@ class Browser(QMainWindow):
         CosmeticBlocker.inject_css(browser)
         ScriptletBlocker.inject_scriptlets(browser)
         pass
-        
+
+    def update_url_bar_buttons(self, url, browser):
+        #NOTE the below code doesn't work because it was designed for the extensions system and I've commented it out for safety.
+        #I'm keeping it around after the removal of the extensions system because it has some useful references for how I might 
+        #implement additions to the URL bar such as bookmarking a link or something else I might think of e.g. automatic webpage colour switching (dark reader emulation)
+        """ if is_webstore:
+            with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+                Colourdata = json.load(f)
+                colour = Colourdata[self.selectedprofile]["ext_btn"]
+            buttoncolourer("extdown_btn", colour)
+
+            icon = get_normIcon("extdown")
+            self.reopen_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
+            self.reopen_button.setToolTip("Reopen Extension Prompt")
+            self.reopen_button.triggered.connect(lambda: self.triggerExtensionsPopup(browser, url))
+            self.url_bar.update() """
+    
+
+
+
+    '''Search Engine Management'''
     
     def set_engine(self, key):
         global engine
@@ -712,6 +790,11 @@ class Browser(QMainWindow):
         engineData[self.engine]["active"] = True
         with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
             json.dump(engineData, f)
+
+
+
+
+    '''Colour Theme Management'''
     
     def SelectColourTheme(self, profile, themes):
         self.tabs.setStyleSheet("")
@@ -956,256 +1039,17 @@ class Browser(QMainWindow):
 
         
 
-
-
     #system for when I implement the main colourtheme editor
     def ColourThemeEditor(self):
         print("ColourThemeEditor still WIP")
         pass
+
     
 
-    def triggerExtensionsPopup(self, browser, url):
-        # Define buttons and their unique return codes
-        if self.WindowConfirmation("Extension Manager", "Download this extension to Midnight Watch?"):
-            print("GET THE DOWNLOAD READY GOGOGOGO")
-            self.extman_instance.installer(browser.url().toString(), srcSourceDir)
-        else:
-            print("Download ignored by user")
-
-
-    def update_url_bar_buttons(self, url, browser):
-        is_webstore = "https://chromewebstore.google.com/detail/" in url
-
-        # Remove existing action
-        if hasattr(self, 'reopen_button') and self.reopen_button is not None:
-            self.url_bar.removeAction(self.reopen_button)
-            self.reopen_button = None
-
-        # Add only if on webstore
-        if is_webstore:
-            with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
-                Colourdata = json.load(f)
-                colour = Colourdata[self.selectedprofile]["ext_btn"]
-            buttoncolourer("extdown_btn", colour)
-
-            icon = get_normIcon("extdown")
-            self.reopen_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
-            self.reopen_button.setToolTip("Reopen Extension Prompt")
-            self.reopen_button.triggered.connect(lambda: self.triggerExtensionsPopup(browser, url))
-            self.url_bar.update()  
-
-
-    def extensionmanagement(self):
-        self.ext_menu.clear()
-        json_path = Path(srcSourceDir) / "data/extensionList.json"
-
-        if not json_path.exists():
-            return
-
-        with open(json_path, "r") as f:
-            extensions_data = json.load(f)
-
-        for ext_id, info in extensions_data.items():
-            ext_path = Path(info["path"])
-            if not ext_path.exists(): continue
-
-            with open(ext_path / "manifest.json", "r") as m:
-                manifest = json.load(m)
-
-            ext_widget = QWidget()
-            layout = QHBoxLayout(ext_widget)
-            layout.setContentsMargins(5, 2, 5, 2)
-
-            #Check for Popup (Manifest V3 'action')
-            popup_file = manifest.get("action", {}).get("default_popup")
-            
-            #Check for Options Page
-            options_file = manifest.get("options_ui", {}).get("page") or \
-                           manifest.get("options_page")
 
 
 
-            #Create a Flat Button for Icon + Name
-            name_btn = QPushButton(info.get("name", ext_id))
-            name_btn.setStyleSheet("""
-                QPushButton {
-                    text-align: left; 
-                    border: none; 
-                    background: transparent;
-                    font-weight: bold;
-                }
-                QPushButton:hover { background: #eeeeee; }
-            """)
-            #Set Icon
-            icons = manifest.get("icons", {})
-            icon_file = icons.get("32") or icons.get("48") or icons.get("128") or icons.get("16")
-            if icon_file:
-                name_btn.setIcon(QIcon(str(ext_path / icon_file)))
-                name_btn.setIconSize(QSize(18, 18))
-
-            #CPass captured variables using default arguments
-            name_btn.clicked.connect(
-                lambda _, e_id=ext_id, p=popup_file, o=options_file: 
-                self.open_extension_options(e_id, p, o)
-            )
-
-            layout.addWidget(name_btn, 1) # Stretch factor 1 to take available space
-
-
-
-
-
-            #Checkbox
-            check = QCheckBox()
-            #Generator to find the match (handles the NoneType bug by checking 'ext is not None')
-            live_extensions_info = self.ext_manager.extensions()
-            # Find the info object first
-            info_obj = next((info for info in live_extensions_info if info is not None and info.id == ext_id), None)
-
-            if info_obj:
-                # Use the ID from the info object to get the actual extension status from the manager
-                is_enabled = self.ext_manager.extensionStatus(info_obj.id) == QWebEngineExtensionManager.Enabled
-            else:
-                is_enabled = info.get("enabled", True)
-            check.setChecked(is_enabled)
-
-
-            
-            #Connect the toggle to both the engine and JSON persistence
-            check.toggled.connect(lambda checked, eid=ext_id: self.toggle_extension(eid, checked, json_path))
-            
-            layout.addWidget(check)
-
-            action = QWidgetAction(self.ext_menu)
-            action.setDefaultWidget(ext_widget)
-            self.ext_menu.addAction(action)
-
-
-        pass
-    
-
-    def open_extension_options(self, ext_id, popup_file, options_file):
-        """Better extension loading with validation"""
-        self.ext_menu.close()
-
-        def _deferred_open():
-            # Force a fresh load if not already loaded
-            json_path = Path(srcSourceDir) / "data/extensionList.json"
-            with open(json_path, "r") as f:
-                ext_data = json.load(f)
-            
-            if ext_id not in ext_data:
-                print(f"ERROR: {ext_id} not in registry")
-                return
-            
-            ext_path = ext_data[ext_id].get("path")
-            if not Path(ext_path).exists():
-                print(f"ERROR: Path doesn't exist: {ext_path}")
-                return
-            
-            # Try loading if not already loaded
-            loaded_ids = [ext.id() for ext in self.ext_manager.extensions() if ext is not None]
-            if ext_id not in loaded_ids:
-                print(f"Extension not loaded, attempting load from: {ext_path}")
-                self.ext_manager.loadExtension(str(ext_path))
-                QTimer.singleShot(500, lambda: self._open_extension_ui(ext_id, popup_file, options_file))
-                return
-            
-            self._open_extension_ui(ext_id, popup_file, options_file)
-
-        QTimer.singleShot(100, _deferred_open)
-
-    def _open_extension_ui(self, ext_id, popup_file, options_file):
-        """Separated UI opening logic"""
-        # Find the actual extension object by ID
-        ext_info = None
-        for ext in self.ext_manager.extensions():
-            if ext and ext.id() == ext_id:
-                ext_info = ext
-                break
-        
-        if not ext_info:
-            print(f"ERROR: Could not find extension object for {ext_id}")
-            return
-        
-        # Now pass the object, not the string
-        self.ext_manager.setExtensionEnabled(ext_info, True)
-        
-        if popup_file:
-            url = f"chrome-extension://{ext_id}/{popup_file}"
-            print(f"Loading popup: {url}")
-            
-            self.popup_window = QDialog(self)
-            self.popup_window.setAttribute(Qt.WA_DeleteOnClose)
-            self.popup_window.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
-            self.popup_window.resize(400, 500)
-            
-            view = QWebEngineView(self.popup_window)
-            ext_page = QWebEnginePage(self.profile, view)
-            view.setPage(ext_page)
-            view.load(QUrl(url))
-            
-            layout = QVBoxLayout(self.popup_window)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.addWidget(view)
-            
-            self.popup_window.move(QCursor.pos())
-            self.popup_window.show()
-        
-        elif options_file:
-            url = f"chrome-extension://{ext_id}/{options_file}"
-            print(f"Loading options: {url}")
-            self.add_new_tab(QUrl(url), "Extension Settings")
-
-    def toggle_extension(self, ext_id, checked, json_path):
-        """Fixed extension loading with better error handling"""
-        with open(json_path, "r") as f:
-            data = json.load(f)
-        
-        if ext_id not in data: 
-            print(f"ERROR: Extension {ext_id} not found in registry")
-            return
-        
-        data[ext_id]["enabled"] = checked
-        
-        with open(json_path, "w") as f:
-            json.dump(data, f, indent=4)
-        
-        name = data[ext_id]["name"]
-        ext_path = data[ext_id]["path"]
-        
-        if checked:
-            # Verify path exists before loading
-            if not Path(ext_path).exists():
-                print(f"ERROR: Extension path does not exist: {ext_path}")
-                return
-            
-            print(f"Loading extension from: {ext_path}")
-            self.ext_manager.loadExtension(str(ext_path))
-            
-            # Wait longer for extension to fully load
-            QTimer.singleShot(1000, lambda: self.finalise_permissions(ext_id, name))
-        else:
-            for ext_info in self.ext_manager.extensions():
-                if ext_info and ext_info.id == ext_id:
-                    self.ext_manager.unloadExtension(ext_info.id)
-                    print(f"Unloaded: {name}")
-                    break
-        
-        self.current_browser.reload()
-
-    def finalise_permissions(self, ext_id, name):
-        if self.WindowConfirmation("Extension Manager", f"Grant permissions to {name}?"):
-            try:
-                for ext_info in self.ext_manager.extensions():
-                    if ext_info and ext_info.id() == ext_id:
-                        self.ext_manager.setExtensionEnabled(ext_info, True)
-                        ext_info.setAllowedOnAnySite(True)
-                        print(f"Granted permissions to {name}")
-                        return
-            except Exception as e:
-                print(f"Error granting permissions: {e}")
-
+    '''Cookie Management'''
 
     def on_cookie_received(self, cookie):
         #these three aren't technically doing anything but they're good references for later
@@ -1325,6 +1169,7 @@ class Browser(QMainWindow):
 
 
 
+'''Main execution loop'''
     
 if __name__ == "__main__":
     app = QApplication(sys.argv)

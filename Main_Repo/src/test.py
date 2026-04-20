@@ -1,160 +1,1178 @@
 import sys
-import json
-from pathlib import Path
-from PySide6.QtCore import QUrl, QTimer, Qt
-from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
-                               QPushButton, QWidget, QLabel, QDialog)
+import warnings
+from PySide6.QtCore import QUrl 
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PySide6.QtWidgets import QCheckBox
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtNetwork import QNetworkCookie, QNetworkCookieJar, QNetworkAccessManager
+from PySide6.QtWebEngineCore import QWebEngineCookieStore
+from urllib.parse import urlparse
+from pathlib import Path
+import requests
+import urllib.request
+import os
+from PIL import Image, ImageOps
+import json
+import re
+from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker
+from ui_core import *
+from cookieManager import CookieManager
+
+# Suppress PySide6 SbkConverter warnings for extension enumeration
+#warnings.filterwarnings("ignore", message=".*SbkConverter::copyToPython.*")
 
 
-class ExtensionLoader(QMainWindow):
-    def __init__(self, profile, path):
-        super().__init__()
-        self.setWindowTitle("Extension Loader V3 (Locale Support)")
-        self.resize(600, 450)
-        
-        # Setup Profile
-        self.profile = profile
-        self.ext_manager = self.profile.extensionManager()
-        self.ext_path = path
+#Icon cache 
+icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
+icon_cache_dir.mkdir(exist_ok=True)
 
-        # UI
-        central = QWidget()
-        self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
+#Main src source
+srcSourceDir = Path(__file__).parent
 
-        self.lbl_status = QLabel("Ready.")
-        self.lbl_status.setWordWrap(True)
-        self.lbl_status.setStyleSheet("font-weight: bold; color: #333;")
-        layout.addWidget(self.lbl_status)
+#Icon attachment filepath system
+def get_normIcon(name):
+    icon_path = icon_cache_dir / f"{name}"
 
-        self.btn_load = QPushButton("1. Load Extension")
-        self.btn_load.clicked.connect(self.load_extension)
-        layout.addWidget(self.btn_load)
+    return QIcon(str(icon_path))
 
-        self.btn_open = QPushButton("2. Open Popup")
-        self.btn_open.setEnabled(False)
-        self.btn_open.clicked.connect(self.open_popup_window)
-        layout.addWidget(self.btn_open)
 
-        self.active_id = None
-        self.popup_file = None
-        self.target_name = None
+with open (f"{srcSourceDir}/data/engineData.json", "r") as f:
+    engineData = dict(json.load(f))
 
-    def load_extension(self):
-        target = Path(self.ext_path).resolve()
-        if not target.exists():
-            self.lbl_status.setText(f"❌ Path not found: {target}")
-            return
+#Secondary dictionary to continue compat with current functions
+engines = {}
+engine = ""
+for key, value in engineData.items():
+    engines[key] = value["URL"]
+    if value["active"] == True:
+        engine = key
 
-        manifest_path = target / "manifest.json"
-        if not manifest_path.exists():
-            self.lbl_status.setText("❌ manifest.json missing")
-            return
+print("ENGINES LIST FROM JSON: ", engines)
+print("SELECTED ENGINE: ", engine)
 
-        # --- PARSE MANIFEST & RESOLVE NAME ---
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-                
-            raw_name = manifest.get("name", "Unknown")
-            
-            # RESOLVER LOGIC: Check for __MSG_
-            if raw_name.startswith("__MSG_") and raw_name.endswith("__"):
-                self.target_name = self.resolve_locale_name(target, manifest, raw_name)
-                print(f"DEBUG: Resolved '{raw_name}' -> '{self.target_name}'")
-            else:
-                self.target_name = raw_name
 
-            # Find popup file
-            popup = manifest.get("action", {}).get("default_popup") or \
-                    manifest.get("browser_action", {}).get("default_popup")
-            self.popup_file = popup or "index.html"
-            
-        except Exception as e:
-            self.lbl_status.setText(f"❌ Parse Error: {e}")
-            return
+#setText names
+global eColsButton, eColsStyle
+eColsButton = []
+eColsStyle = []
 
-        self.lbl_status.setText(f"⏳ Loading: {self.target_name}...")
-        
-        # LOAD
-        self.ext_manager.loadExtension(str(target))
-        
-        # WAIT & MATCH
-        QTimer.singleShot(800, self.find_and_activate)
+#Encryption Systems enable/disable
+with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
+    toggles = dict(json.load(f))
 
-    def resolve_locale_name(self, ext_path, manifest, raw_name):
-        """
-        Reads _locales/en/messages.json to convert __MSG_extName__ -> uBlock Origin Lite
-        """
-        key = raw_name.replace("__MSG_", "").replace("__", "")
-        default_locale = manifest.get("default_locale", "en")
-        
-        # Try specific locale first, then fallback to just 'en'
-        candidates = [default_locale, "en", "en_US"]
-        
-        for loc in candidates:
-            msg_path = ext_path / "_locales" / loc / "messages.json"
-            if msg_path.exists():
+if toggles["DNS-over-HTTPS"]:
+    #Forces the browser to resolve domains via HTTPS, hiding lookups from the firewall
+    sys.argv.append("--built-in-dns-lookup-enabled")
+    sys.argv.append("--dns-over-https-templates=https://cloudflare-dns.com")
+    print("DNS-over-HTTPS enabled")
+else:
+    print("DNS-over-HTTPS disabled")
+
+if toggles["Encrypted-Client Hello"]:
+    #Hides the SNI (the website name) during the SSL handshake
+    sys.argv.append("--enable-features=EncryptedClientHello")
+    print("Encrypted-Client Hello enabled")
+else:
+    print("Encrypted-Client Hello disabled")
+
+if "Cookie-Prediction-Sensitivity" in toggles.keys():
+    global sensitivity
+    sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive
+
+if "Cookie-Accept/Deny On Leave" in toggles.keys():
+    global siteLeaveCookies
+    siteLeaveCookies = toggles["Cookie-Accept/Deny On Leave"] #0 for remove all, 1 for accept all
+
+if "Save-Tabs-On-Restart" in toggles.keys():
+    saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
+
+# ---- MAIN FUNCTIONS ----
+
+#value clamper
+def clamp(value, min_value, max_value):
+    return max(min_value, min(value, max_value))
+
+#Filter update system
+def update_filters():
+    filter_path = srcSourceDir / "data" / "urlblockerlist.txt"
+    urllist = [
+        "https://easylist.to/easylist/easylist.txt", 
+        "https://easylist.to/easylist/easyprivacy.txt", 
+        "https://secure.fanboy.co.nz/fanboy-annoyance.txt", 
+        "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt"
+    ]
+    
+    if not filter_path.exists():
+        filter_path.parent.mkdir(parents=True, exist_ok=True)
+        print("Midnight Shield: Updating filters...")
+
+        with open(filter_path, "w") as f:
+            pass #clear text file
+        with open(filter_path, "a", encoding="utf-8") as f:
+            for url in urllist:
                 try:
-                    with open(msg_path, "r", encoding="utf-8") as f:
-                        msgs = json.load(f)
-                    # Extract the actual string
-                    if key in msgs:
-                        return msgs[key]["message"]
-                except:
-                    continue
+                    response = requests.get(url, timeout=15)
+                    if response.status_code == 200:
+                        # Write the text content plus a newline for safety
+                        f.write(response.text + "\n")
+                        print(f"Grabbed: {url.split('/')[-1]}")
+                    else:
+                        print(f"Server error {response.status_code} on {url}")
+                except Exception as e:
+                    print(f"Failed to download {url}: {e}")
         
-        return raw_name # Fallback to raw if lookup fails
+        print("Midnight Shield: All filter data compiled.")
+        return True
+    return False
 
-    def find_and_activate(self):
-        found_ext = None
-        all_extensions = self.ext_manager.extensions()
-        
-        print(f"DEBUG: Scanning {len(all_extensions)} extensions for '{self.target_name}'")
 
-        for ext in all_extensions:
-            # Compare Name against Resolved Name
-            if ext.name() == self.target_name:
-                found_ext = ext
-                break
+#Converts image to an alpha channel and a colour channel. Turns all colours to white, removes alpha, then triggers a mask recolour to the desired appearance bsaed on json file
+def buttoncolourer(k, v):
+    name = (str(k).split("_btn"))[0]
+    filepath = (f"{icon_cache_dir}/{name}.png")
+    img = Image.open(filepath).convert('RGBA')
+    r, g, b, a = img.split() #only need 'a' value
+    #convert to white for better handling
+    white_img = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    mask_white = white_img.copy()
+    mask_white.putalpha(a)
+    #convert colour data into usable rgb tuple SAFELY - consider paramaterising this to avoid injection
+    vstrip = v.strip('()').split(',')
+    newv = tuple(int(i) for i in vstrip)
+    coloured = Image.new("RGBA", img.size, newv+(255,))
+    coloured.putalpha(a)
+    colouredpath = (f"{icon_cache_dir}/{name}.png")
+    coloured.save(colouredpath, format='PNG')
+    return colouredpath
+
+class Browser(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Midnight Engine")
+        self.resize(1200, 800)
+        global eColsStyle
+        global eColsButton
+        global sensitivity
+
+
+        #Bars
+        self.url_bar = QLineEdit()
+        eColsStyle.append("url_bar")
+        #add a bookmarks bar here at some point
+
+        self.user = "mainUser" #make a system for this at some point!!!from PySide6.QtWebEngineCore import QWebEngineProfile
+
         
-        if found_ext:
-            self.active_id = found_ext.id()
+        self.profile = QWebEngineProfile("PersistentUser", self)
+        self.current_browser = QWebEngineView(self)
+        #self.profile.persistentCookiesPolicy() = True
+
+        #settings system
+        settings = self.profile.settings()
+        #Leave these true so javascript injections function properly
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(settings.WebAttribute.AllowRunningInsecureContent, True)
+        #Allows important sandboxing similar to Chrome. NEVER ENABLE THIS, IT LETS FILEPAGE JAVASCRIPT READ FILE HEADERS ON PC
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, False)
+        #Would be good but I need javascript actually working
+        settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
+        #Avoid giving instant clipboard access
+        settings.setAttribute(settings.WebAttribute.JavascriptCanAccessClipboard, False)
+
+
+        #Data storage management - future plans to use this for history saving and long term cookie storage/removal choices for users
+        base_path = os.path.abspath("./Main_Repo/src/data/Browser_Data")
+        profile_path = os.path.join(base_path, "User_Profile")
+        cache_path = os.path.join(base_path, "User_Cache")
+
+        os.makedirs(profile_path, exist_ok=True)
+        os.makedirs(cache_path, exist_ok=True)
+
+        self.profile.setCachePath(cache_path)
+        self.profile.setPersistentStoragePath(profile_path)
+
+
+
+        #Update adblocker filters from easylist
+        update_filters()
+        #Adblock interceptor
+        self.interceptor = AdInterceptor()
+        self.profile.setUrlRequestInterceptor(self.interceptor)
+
+        
+
+        #Initialise cookie jar (Cookie management)
+        self.cookieManager = CookieManager(self.profile, sensitivity)
+        self.cookie_store = self.profile.cookieStore()
+        self.cookie_store.deleteAllCookies()
+        self.cookie_store.loadAllCookies() 
+        self.cookie_store.cookieAdded.connect(self.on_cookie_received)
+        self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
+
+        self.home_path = f"{srcSourceDir}/ui/homepage.html"
+        self.tabs  = QTabWidget()
+        self.tabs.setTabsClosable(True)
+        self.tabs.tabCloseRequested.connect(self.close_tab)
+        self.tabs.currentChanged.connect(self.switch_tab)
+        eColsStyle.append("tabs")
+        eColsStyle.append("tab_backer") #for background of tab bar!
+        # default tab sizing (set once) to avoid repeated overrides
+        # Apply sizing directly to the QTabBar so later per-widget stylesheets don't clobber it
+        self.tabs.tabBar().setStyleSheet("QTabBar::tab { height: 30px; width: 200px; padding-left: 5px; padding-right: 5px; }")
+        # Force ellipsis to always appear on right side, prevents weird center→left clipping behavior
+        self.tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
+        self.tabs.tabBar().setExpanding(False)
+        self.tabs.tabBar().setUsesScrollButtons(True)
+        self.setCentralWidget(self.tabs)
+        self.tabs.setTabsClosable(True)
+
+        self.nav_bar = QToolBar("Navigation")
+        self.addToolBar(self.nav_bar)
+        self.nav_bar.setMovable(False)
+        self.nav_bar.setStyleSheet("background:rgb(1, 1, 100)")
+        eColsStyle.append("nav_bar")
+
+        
+
+        #main button constructors
+        self.ButtonConstructor("back_btn", "Back", "back", "go_back")
+        self.ButtonConstructor("reload_btn", "Reload", "reload", "reload_tab")
+        self.ButtonConstructor("forward_btn", "Forward", "forward", "go_forward")
+        self.ButtonConstructor("home_btn", "Home", "home", "go_home")
+        self.ButtonConstructor("newtab_btn", "New Tab", "newtab", "new_tab")
+
+        #reload animation components
+        self.rotation_angle = 0
+        self.rotation_timer = QTimer()
+        self.rotation_timer.timeout.connect(self.rotate_reload_icon)
+        self.current_browser.loadStarted.connect(self.start_reload_animation)
+        self.current_browser.loadFinished.connect(self.stop_reload_animation)
+
+        #Colour palette systems
+        '''
+        Current plan is to steal the dropdown system from my engine selector ui and use it to select themes from a list
+        The list is extracted from colourProfiles.json and can be either cycled through by pressing the colourtheme button
+        OR clicking the dropdown to select a colour specifically. In the dropdown menu is also a final selector for customising 
+        colour palettes that opens the customiser UI and greys out and disables the buttons, allowing users to left click buttons
+        to select a colour for them.
+        '''
+        self.colourPalette_btn = QToolButton(self)
+        self.colourPalette_btn.setToolTip("Colour Palettes")
+        self.ColourMenu = QMenu(self)
+
+        #define starter profile. Need to do this more elegantly at some point since the profile selection doesn't even start at this it's just a placeholder
+        with open (f'{srcSourceDir}/data/userData.json', "r") as f:
+            Udata = dict(json.load(f))
+        self.selectedprofile = (dict(Udata[self.user]))["ColourProfile"]
+        print(self.selectedprofile)
+
+        with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+            Colourdata = dict(json.load(f))
+        
+        for key in Colourdata.keys():
+            # Widgets for Menu Items
+            Cwidget = QWidget()
+            Clayout = QHBoxLayout(Cwidget)
+            Clayout.setContentsMargins(5, 2, 5, 2)
+            Clayout.setSpacing(5)
+
+            #Add text
+            Ctext_label = QLabel(key.capitalize())
+            Ctext_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            Clayout.addWidget(Ctext_label)
+
+            #Create Widget Action
+            Cwidget_action = QWidgetAction(self)
+            Cwidget_action.setDefaultWidget(Cwidget)
+            Cwidget_action.setData(key)
+            Cwidget_action.triggered.connect(lambda checked, p=key, d=Colourdata: self.SelectColourTheme(p, d))
+            self.ColourMenu.addAction(Cwidget_action)
+
+        #add more themes button append
+        Awidget = QWidget()
+        Alayout = QHBoxLayout(Awidget)
+        Alayout.setContentsMargins(5, 2, 5, 2)
+        Alayout.setSpacing(5)
+
+        Atext_label = QLabel("Add New Themes")
+        Alayout.addWidget(Atext_label)
+
+        Awidget_action = QWidgetAction(self)
+        Awidget_action.setDefaultWidget(Awidget)
+        Awidget_action.setData("Add New Themes")
+        Awidget_action.triggered.connect(self.ColourThemeEditor)
+        self.ColourMenu.addAction(Awidget_action)
+
+        
+        self.colourPalette_btn.setMenu(self.ColourMenu)
+        self.colourPalette_btn.setIcon(get_normIcon("colourPalette"))
+
+        # When the main button is clicked, read the current selectedprofile at click time
+        self.colourPalette_btn.clicked.connect(lambda checked=False, d=Colourdata: self.ToggleColourTheme(self.selectedprofile, d))
+
+        self.colourPalette_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        self.nav_bar.addWidget(self.colourPalette_btn)
+        eColsButton.append("colourPalette_btn")
+        
+
+
+        #engine system
+        self.engine = engine
+        self.engine_btn = QToolButton(self)
+        self.engine_btn.setText("Search With...")
+        self.browsermenu = QMenu(self)
+
+        for key, search_url in engines.items():
+            # Create widget for menu item
+            widget = QWidget()
+            layout = QHBoxLayout(widget)
+            layout.setContentsMargins(5, 2, 5, 2)
+            layout.setSpacing(5)
             
-            # === FIX IS HERE ===
-            # Pass the 'found_ext' OBJECT, not the String ID
+            # Add icon
+            icon_label = QLabel()
+            icon = QIcon(str(icon_cache_dir / f"{key}"))
+            icon_label.setPixmap(icon.pixmap(16, 16))
+            layout.addWidget(icon_label)
+            icon_label.setFixedWidth(30) 
+            
+            # Add text
+            text_label = QLabel(key.capitalize())   
+            text_label.setObjectName(f"browser_menu_text_label_{key}")
+            text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(text_label)
+
+            # Create QWidgetAction and set the custom widget
+            widget_action = QWidgetAction(self)
+            widget_action.setDefaultWidget(widget)
+            widget_action.setData((key, search_url))
+            widget_action.triggered.connect(lambda checked, k=key: self.set_engine(k))
+            self.browsermenu.addAction(widget_action)
+            
+        self.engine_btn.setMenu(self.browsermenu)
+        self.engine_btn.setIcon(QIcon(str(icon_cache_dir / f"{self.engine}")))
+
+        self.engine_btn.clicked.connect(lambda: self.current_browser.setUrl(QUrl(engines[self.engine].split('/search?q=')[0])))
+
+        self.engine_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        self.nav_bar.addWidget(self.engine_btn)
+
+
+        self.set_engine(self.engine)
+        self.url_bar = QLineEdit()
+        self.url_bar.returnPressed.connect(self.load_url)
+        self.nav_bar.addWidget(self.url_bar)
+
+        self.current_browser.urlChanged.connect((lambda q: self.url_bar.setText(q.toString())))
+
+
+        #Cookie Menu GUI
+        eColsButton.append("cookie_btn")
+        self.cookie_btn = QToolButton(self)
+        self.cookie_btn.setText("cookie_btn")
+        self.cookie_btn.setToolTip("Accept/Deny Cookies")
+        self.cookieMenu = QMenu(self)
+        setattr(self, "cookie_btn", self.cookie_btn)
+
+        self.cookie_btn.setMenu(self.cookieMenu)
+        self.cookie_btn.setIcon(get_normIcon("cookie"))
+        self.cookieMenu.aboutToShow.connect(self.cookieGUI)
+        self.cookie_btn.setPopupMode(QToolButton.InstantPopup)
+        self.nav_bar.addWidget(self.cookie_btn)
+
+
+
+
+
+
+
+
+
+
+        #final reset to styling to skip default selection
+        self.SelectColourTheme(self.selectedprofile, Colourdata)
+
+        #Deploy js code when webpage starts
+        EVAdInterceptor.deployPayload(browser=self.current_browser) #TODO: Script executes but doesn't actually work, research into that??? storage access permission denied
+        #alternatively, just work on rudimentary adblock and suggest ublock; integrate chrome extensions store
+
+
+
+        #Actions list using commands
+
+        #Quit command
+        exit_action = QAction("&Exit", self)
+        self.addAction(exit_action)
+        exit_action.setShortcut(QKeySequence("Ctrl+Q"))
+        exit_action.triggered.connect(self.exit_app)
+
+        #Close tab command
+        tabclose_action = QAction("&Close &Tab", self)
+        self.addAction(tabclose_action)
+        tabclose_action.setShortcut(QKeySequence("Ctrl+W"))
+        tabclose_action.triggered.connect(self.close_tab)
+
+        #Add tab command
+        tabopen_action = QAction("&New &Tab", self)
+        self.addAction(tabopen_action)
+        tabopen_action.setShortcut(QKeySequence("Ctrl+T"))
+        tabopen_action.triggered.connect(self.add_new_tab)
+
+        #Reload tab command
+        tabreload_action = QAction("&Reload &Tab", self)
+        self.addAction(tabreload_action)
+        tabreload_action.setShortcut(QKeySequence("Ctrl+R"))
+        tabreload_action.triggered.connect(self.reload_tab)
+
+        #Mute tab command - need to actually build
+        """ tabmute_action = QAction("&Mute &Tab", self)
+        self.addAction(tabmute_action)
+        tabmute_action.setShortcut(QKeySequence("Ctrl+M"))
+        tabmute_action.triggered.connect(self.mute_tab) """
+
+
+        #Run all browser startup triggers such as loading tabs from previous sessions, deploying js code, etc.
+        self.onStartup()
+
+
+
+
+
+
+
+    '''Startup and Shutdown functions'''
+
+    def onStartup(self):
+        #Load all tabs from most recent shutdown if possible
+        if saveTabsOnRestart:
             try:
-                self.ext_manager.setExtensionEnabled(found_ext, True)
-                print(f"DEBUG: Extension object passed to setExtensionEnabled.")
+                with open(f"{srcSourceDir}/data/bootupTabs.json", "r") as f:
+                    savetabs = json.load(f)
+                    
+                for url, title in savetabs.items():
+                    self.add_new_tab(QUrl(url), title)
+                    self.update_tab_icon(self.current_browser)
+                    
             except Exception as e:
-                print(f"CRITICAL ERROR enabling extension: {e}")
-            
-            self.lbl_status.setText(f"✅ SUCCESS!\nName: {self.target_name}\nID: {self.active_id}")
-            self.btn_open.setEnabled(True)
+                print("No tabs saved in startup OR an error has occurred.")
+                print("Report: ", e)
         else:
-            self.lbl_status.setText(f"❌ Failed to match '{self.target_name}'")
-
-
-    def open_popup_window(self):
-        if not self.active_id: return
-        url = f"chrome-extension://{self.active_id}/{self.popup_file}"
-        print(f"Opening: {url}")
-
-        self.popup = QDialog(self)
-        self.popup.resize(500, 600)
-        view = QWebEngineView(self.popup)
-        view.setPage(QWebEnginePage(self.profile, view))
-        view.load(QUrl(url))
+            pass
         
-        layout = QVBoxLayout(self.popup)
-        layout.addWidget(view)
-        layout.setContentsMargins(0,0,0,0)
-        self.popup.show()
+        #Add a default homepage window
+        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+        
+        #Update all tabs to the correct appearance
+        self.update_tab_icon(self.current_browser)
 
+    def exit_app(self):
+        if saveTabsOnRestart:
+            #save all urls to a json file for attempted re-opening on browser start
+            savetabs = {}
+            for tab in range (self.tabs.count()):
+                if "homepage.html" in self.tabs.widget(tab).url().toString():
+                    pass #skip new tab windows
+                else:
+                    savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
+                    print(f"Saving: {str(self.tabs.tabText(tab))}")
+            
+            with open(f"{srcSourceDir}/data/bootupTabs.json", "w") as f:
+                json.dump(savetabs, f)
+                
+        QApplication.quit()
+        
+
+
+
+
+
+
+
+    '''Main Events Handling'''
+
+    def closeEvent(self, event):
+        if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
+            self.exit_app()
+            event.accept()
+        else:
+            event.ignore()
+            print("Exit cancelled by user")
+    
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        
+        new_width = event.size().width()
+        old_width = event.oldSize().width()
+        
+        if new_width != old_width:
+            # Width changed - update tab sizes
+            self.update_tab_sizes()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not hasattr(self, '_tabs_sized'):
+            self.update_tab_sizes()
+            self._tabs_sized = True
+            
+
+
+
+
+
+    '''Window System'''
+
+    def WindowConfirmation(self, title, message):
+        reply = QMessageBox.question(self, title, message,
+                                     QMessageBox.StandardButton.No |
+                                     QMessageBox.StandardButton.Yes)
+        return reply == QMessageBox.StandardButton.Yes
+
+
+
+
+
+
+
+    '''Buttons and Icons'''
+
+    def ButtonConstructor(self, name, tooltip, icon, handler_name):
+        """Creates all buttons for navbar"""
+        btn = QToolButton(self)
+        btn.setToolTip(tooltip)
+        btn.setText(name)
+        btn.setIcon(get_normIcon(icon))
+        self.nav_bar.addWidget(btn)
+
+        #Dynamically attach button to object data
+        setattr(self, name, btn)
+
+        #Connect to class method
+        if hasattr(self, handler_name):
+            btn.clicked.connect(getattr(self, handler_name))
+        else:
+            print(f"WARNING! Handler name {handler_name} not found")
+        
+        global eColsButton
+        eColsButton.append(name)
+        
+        return btn
+
+    #button assignment functions
+    def go_back(self): self.current_browser.back()
+    def reload_tab(self): self.current_browser.reload()
+    def go_forward(self): self.current_browser.forward()
+    def go_home(self): self.current_browser.setUrl(QUrl.fromLocalFile(str(self.home_path)))
+    def new_tab(self): self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+
+    #reload icon animations
+    def rotate_reload_icon(self):
+        """Rotate the reload icon continuously"""
+        self.rotation_angle = (self.rotation_angle + 10) % 360
+        base_icon = get_normIcon("reload")
+        pixmap = base_icon.pixmap(24, 24)
+        
+        transform = QTransform().rotate(self.rotation_angle)
+        rotated_pixmap = pixmap.transformed(transform, Qt.SmoothTransformation)
+        self.reload_btn.setIcon(QIcon(rotated_pixmap))
+    
+    def start_reload_animation(self):
+        if not self.rotation_timer.isActive():
+            self.rotation_timer.start(0.01)  # adjust speed here (ms per frame)
+    
+    def stop_reload_animation(self):
+        if self.rotation_timer.isActive():
+            self.rotation_timer.stop()
+        # reset icon to upright
+        self.rotation_angle = 0
+        self.reload_btn.setIcon(get_normIcon("reload"))
+
+
+
+
+
+
+    '''Tab Management'''
+
+    def current_browser(self):
+        return self.tabs.currentWidget()
+    
+    def add_new_tab(self, qurl=None, label="New Tab"):
+        if qurl is None or isinstance(qurl, bool):
+            qurl = QUrl.fromLocalFile(f"{srcSourceDir}/ui/homepage.html")
+        
+        if isinstance(qurl, tuple):
+            qurl = qurl[0]
+        
+        browser = QWebEngineView()
+        new_page = QWebEnginePage(self.profile, browser)
+        browser.setPage(new_page)
+        browser.setUrl(qurl)
+        self.current_browser = browser
+        
+
+        i = self.tabs.addTab(browser, label)
+
+        self.tabs.setCurrentIndex(i)
+
+        if hasattr(self, 'contrast_qcolor'):
+            self.tabs.tabBar().setTabTextColor(i, self.contrast_qcolor)
+
+        # Connect signals
+        new_page.iconChanged.connect(lambda: self.update_tab_icon(browser))
+        browser.urlChanged.connect(lambda qurl, browser=browser: self.update_tab_title(browser))
+        browser.loadStarted.connect(self.start_reload_animation)
+        browser.loadFinished.connect(lambda ok, b=browser: (self.stop_reload_animation(), self.on_load_finished(browser)))
+        browser.titleChanged.connect(lambda title, browser=browser: self.update_tab_title(browser, title))
+
+        
+        if qurl.toString().endswith("homepage.html"):
+            self.url_bar.setText("Homepage")
+
+        self.update_tab_sizes()
+        self.update_tab_icon(self.current_browser)
+        return browser
+    
+    def update_tab_icon(self, browser):
+        tab_index = self.tabs.indexOf(browser)
+        if tab_index != -1:
+            icon = browser.page().icon()
+            if not icon.isNull():  # Only set if icon actually loaded
+                self.tabs.setTabIcon(tab_index, icon)
+            else:
+                self.tabs.setTabIcon(tab_index, get_normIcon("tabIcon.png"))  # Set default icon if none
+                
+    def close_tab(self, index):
+        if self.tabs.count() > 1:
+            #manage all remaining cookies based on settings preferences
+            target_tab = self.tabs.widget(index)
+            if target_tab:
+                target_url = target_tab.url().toString()
+                for key, data in list(self.cookiedict.items()):
+                    if data["domain"] in target_url:
+                        if siteLeaveCookies:
+                            self.cookieManager.acceptCookie(key)
+                        else:
+                            self.cookieManager.cookieEVAPORATOR(key)
+
+            self.tabs.removeTab(index)
+        else:
+            self.close()
+
+        self.update_tab_sizes()
+
+    def switch_tab(self, index):
+        current_browser = self.tabs.widget(index)
+        if current_browser:
+            self.current_browser = current_browser
+            self.url_bar.setText(current_browser.url().toString())
+            if current_browser.url().toString().endswith("homepage.html"):
+                self.url_bar.setText("Homepage")
+            
+
+    def update_tab_title(self, browser, title=None):
+        i = self.tabs.indexOf(browser)
+        if i != -1:
+            # Use provided title or fallback
+            if not title:
+                title = browser.url().toString()
+
+            # Clean it up a bit for display
+            if len(title) > 60:
+                title = title[:57] + "..."
+            
+            if title.endswith('homepage.html'):
+                title = 'Homepage'
+
+            self.tabs.setTabText(i, title)
+            self.update_url_bar_buttons(browser.url().toString(), browser)
+            
+        pass
+
+    def calculate_tab_width(self):
+        # Get total available width
+        tab_bar_width = self.tabs.tabBar().width() #change this if I need more padding, though note that it will override once the tabs reach the smallest possible size
+        tab_bar_width = tab_bar_width - (tab_bar_width/12) #padding for scroll buttons and general breathing room, adjust as needed
+        tab_count = max(1, self.tabs.count())
+        
+        # Calculate width per tab
+        width_per_tab = tab_bar_width / tab_count
+        
+        # Apply min/max constraints (e.g., 100px minimum, 300px maximum)
+        min_width = 100
+        max_width = 200
+        final_width = clamp(width_per_tab, min_width, max_width)
+        
+        return final_width
+
+    def update_tab_sizes(self):
+        tab_width = self.calculate_tab_width()
+        tabbar = self.tabs.tabBar()
+        current_style = tabbar.styleSheet()
+        
+        # Remove any existing QTabBar::tab rules
+        cleaned_style = re.sub(
+            r'QTabBar::tab\s*\{[^}]*\}',
+            '',
+            current_style
+        )
+        
+        # Append fresh rule with new width
+        new_rule = f"QTabBar::tab {{ height: 30px; width: {int(tab_width)}px; }}"
+        final_style = cleaned_style + "\n" + new_rule
+        
+        tabbar.setStyleSheet(final_style)
+
+    '''URL Handling'''
+
+    def load_url(self):
+        #had to encase this in a try-except loop, there's an odd keyboardinterrupt error that is cased by virtually nothing and fixes by pressing enter again, this should circumvent.
+        input_text = self.url_bar.text().strip()
+        if not input_text:
+            return
+
+        # QUrl.fromUserInput automatically handles missing schemes (adds http://)
+        # and checks if the string looks like a valid web address
+        url = QUrl.fromUserInput(input_text)
+
+        if url.isValid() and "." in input_text and " " not in input_text:
+            # It's a valid URL (e.g., "google.com")
+            self.current_browser.setUrl(url)
+        else:
+            # It's a search query
+            search_url = engines[engine] + input_text.replace(" ", "+")
+            self.current_browser.setUrl(QUrl(search_url))
+
+    def on_load_finished(self, browser):
+        #attempt to close extra boxes on blocked ads
+        CosmeticBlocker.inject_css(browser)
+        ScriptletBlocker.inject_scriptlets(browser)
+        pass
+
+    def update_url_bar_buttons(self, url, browser):
+        #NOTE the below code doesn't work because it was designed for the extensions system and I've commented it out for safety.
+        #I'm keeping it around after the removal of the extensions system because it has some useful references for how I might 
+        #implement additions to the URL bar such as bookmarking a link or something else I might think of e.g. automatic webpage colour switching (dark reader emulation)
+        """ if is_webstore:
+            with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+                Colourdata = json.load(f)
+                colour = Colourdata[self.selectedprofile]["ext_btn"]
+            buttoncolourer("extdown_btn", colour)
+
+            icon = get_normIcon("extdown")
+            self.reopen_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
+            self.reopen_button.setToolTip("Reopen Extension Prompt")
+            self.reopen_button.triggered.connect(lambda: self.triggerExtensionsPopup(browser, url))
+            self.url_bar.update() """
+    
+
+
+
+    '''Search Engine Management'''
+    
+    def set_engine(self, key):
+        global engine
+        engine = key
+        self.engine = key
+        self.engine_btn.setText(key.capitalize())
+        self.engine_btn.setToolTip(key)
+        self.engine_btn.setIcon(QIcon(str(icon_cache_dir / f"{key}")))
+        
+        #reformat json file to show active browser as 'true'. Swapping browsers lets the selected one persist after resets
+        with open(f"{srcSourceDir}/data/engineData.json", "r") as f:
+            engineData = dict(json.load(f))
+        for key, value in engineData.items():
+            if engineData[key]["active"] == True:
+                engineData[key]["active"] = False
+        engineData[self.engine]["active"] = True
+        with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
+            json.dump(engineData, f)
+
+
+
+
+    '''Colour Theme Management'''
+    
+    def SelectColourTheme(self, profile, themes):
+        self.tabs.setStyleSheet("")
+        self.tabs.tabBar().setStyleSheet("")
+        global eColsButton, eColsStyle
+        self.selectedprofile = profile
+
+        self.colourPalette_btn.setToolTip(f"Colour Palettes (currently {profile})")
+
+        print(f"Colour Profile Switched to {profile}")
+
+        datalist = list((themes[profile]).items())
+        print(datalist)
+
+        #adjust user profile colour selection
+        with open (f"{srcSourceDir}/data/userData.json", "r") as f:
+            dataedit = json.load(f)
+        (dict(dataedit["mainUser"]))["ColourProfile"] = profile
+        dataedit["mainUser"]["ColourProfile"] = profile
+        with open (f"{srcSourceDir}/data/userData.json", "w") as f:
+            json.dump(dataedit, f)
+            
+
+        #recolour icons
+        tabcolour = "(255, 255, 255)" #white is default
+        for k, v in datalist:
+            if k in eColsButton:
+                print(f"eColsButton: {k}")
+                print(f"colourAdjust: {v}")
+                obj = getattr(self, k, None)
+                if obj is not None:
+                    colouredpath = buttoncolourer(k, v)
+                    #REFRESH ICON
+                    obj.setIcon(QIcon(str(colouredpath)))
+
+                    #adjust dropdown icon for colourpalettes
+                    if k == "colourPalette_btn":
+                        rgb_list = list((v[1:-1]).split(", "))
+                        self.select_RGB_SL = (
+                            clamp(int(rgb_list[0]), 0, 255),
+                            clamp(int(rgb_list[1]), 0, 255),
+                            clamp(int(rgb_list[2]), 0, 255)
+                        )
+                        self.light_rgb_tuple = (
+                            clamp(int(rgb_list[0]) - 40, 0, 255),
+                            clamp(int(rgb_list[1]) - 40, 0, 255),
+                            clamp(int(rgb_list[2]) - 40, 0, 255)
+                            ) 
+                        self.rgb_tuple = (
+                            clamp(int(rgb_list[0]) - 120, 0, 255),
+                            clamp(int(rgb_list[1]) - 120, 0, 255),
+                            clamp(int(rgb_list[2]) - 120, 0, 255)
+                            ) 
+                        self.hexval = '#%02x%02x%02x' % self.rgb_tuple
+                        print(f"Adjusting colourPalette dropdown {self.hexval}, {self.rgb_tuple}, {self.light_rgb_tuple}")
+                        # Apply the styles specifically to the dropdown button (colourPalette_btn)
+                        obj.setStyleSheet(f"""
+                            QToolButton {{
+                                background-color: {self.hexval};   /* Set background color */
+                                border: 1px solid {self.hexval};   /* Optional: add border matching background */
+                                padding-right: 14px;          /* Adjust padding */
+                                border-radius: 5px;
+                            }}
+                            
+                            QToolButton::menu-indicator {{
+                                background-color: {self.hexval};   /* Set the menu indicator color */
+                                padding: 3px;                 /* Adjust indicator size */
+                            }}
+                            
+                            QToolButton::icon {{
+                                image: url({str(colouredpath)}); /* Correct way to set the icon image */
+                            }}
+                        """)
+                #select file from system and use PIL to change based on colour v, then s
+                pass
+
+            #recolour other elements
+            elif k in eColsStyle:
+                print(f"eColsStyle: {k}")
+                obj = getattr(self, k, None)
+                if obj is not None:
+                    if k not in ('tabs', 'tab_backer'):
+                        obj.setStyleSheet(f"background:rgb{v}")
+
+                # parse the rgb tuple
+                rgb_vals = [int(x.strip()) for x in str(v).strip('()').split(',')]
+                avgnew = sum(rgb_vals) / 3
+                # choose black text for light backgrounds, white for dark backgrounds
+                self.contrast_qcolor = QColor(0, 0, 0) if avgnew > 150 else QColor(255, 255, 255)
+
+                if k == 'tabs':
+                    # tab text color + set URL bar to match tabs background with contrasting text
+                    for i in range(self.tabs.count()):
+                        self.tabs.tabBar().setTabTextColor(i, self.contrast_qcolor)
+
+                    bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
+                    text_rgb_str = f"rgb({self.contrast_qcolor.red()}, {self.contrast_qcolor.green()}, {self.contrast_qcolor.blue()})"
+                    self.url_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
+
+                elif k == 'tab_backer':
+                    # set the tab bar background color specifically using QPalette (more robust than stylesheets)
+                    r, g, b = rgb_vals
+                    self.tabs.setDocumentMode(True)
+                    self.tabs.setAutoFillBackground(True)
+                    self.tabs.tabBar().setStyleSheet(f"QTab::pane {{ color: rgb({r}, {g}, {b}); }}")
+                    self.tabs.setStyleSheet(f"\nQTabBar {{ color: rgb({r}, {g}, {b}); }}")
+                    tabbar = self.tabs.tabBar()
+
+                    # Apply color to the tabBar via palette to avoid stylesheet parsing issues
+                    color = QColor(r, g, b)
+                    pal = tabbar.palette()
+                    pal.setColor(QPalette.Window, color)
+                    tabbar.setAutoFillBackground(True)
+                    tabbar.setPalette(pal)
+                    # fallback: explicitly set stylesheet on tabBar so background is reliably visible
+                    existing = tabbar.styleSheet() or ""
+                    size_rule = "QTabBar::tab { height: 30px; width: 150px; }"
+                    if "QTabBar::tab" not in existing:
+                        existing = existing + "\n" + size_rule
+                    tabbar.setStyleSheet(existing + f"\nQTabBar {{ background-color: rgb({r}, {g}, {b}); }}")
+
+                    # Also set the QTabWidget pane background so the area behind tabs matches
+                    tabs_pal = self.tabs.palette()
+                    tabs_pal.setColor(QPalette.Window, color)
+                    self.tabs.setAutoFillBackground(True)
+                    self.tabs.setPalette(tabs_pal)
+                    tabbar.setPalette(tabs_pal)
+
+                    # Update existing tab text contrast
+                    for i in range(self.tabs.count()):
+                        tabbar.setTabTextColor(i, self.contrast_qcolor)
+
+                    print(r, g, b)
+                    self.tabs.setStyleSheet(f"QTab::pane {{ color: rgb({r}, {g}, {b}); }}")
+
+
+                elif k == 'url_bar':
+                    # explicit url_bar entry overrides url bar styling
+                    text_qcolor = QColor(0, 0, 0) if avgnew > 150 else QColor(255, 255, 255)
+                    bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
+                    text_rgb_str = f"rgb({text_qcolor.red()}, {text_qcolor.green()}, {text_qcolor.blue()})"
+                    self.url_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
+            else:
+                print(f"other: {k}")
+                pass
+        
+        #recolour background for searchicon
+        self.engine_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {self.hexval};   /* Set background color */
+                border: 1px solid {self.hexval};   /* Optional: add border matching background */
+                padding-right: 14px;          /* Adjust padding */
+                border-radius: 5px;
+            }}
+            
+            QToolButton::menu-indicator {{
+                background-color: {self.hexval};   /* Set the menu indicator color */
+                padding: 3px;                 /* Adjust indicator size */
+            }}
+            
+            QToolButton::icon {{
+                image: url({str(colouredpath)}); /* Correct way to set the icon image */
+            }}
+        """)
+        
+        #need to set colourmenu attibutes individually for each QMenu dropdown segment
+        self.ColourMenu.setAttribute(Qt.WA_TranslucentBackground)
+        self.browsermenu.setAttribute(Qt.WA_TranslucentBackground)
+        self.cookieMenu.setAttribute(Qt.WA_TranslucentBackground)
+
+        app.setStyleSheet(f"""
+            /* Style the dropdown menu items */
+            QMenu {{
+                background-color: {self.hexval};  /* Set background color for the dropdown */
+                border: 5px solid {self.hexval};      /* Optional border for the dropdown */
+                border-radius: 10px;
+                padding: 5px;
+            }}
+            QMenu::item::selected {{
+                colour: {self.select_RGB_SL}; 
+            }}
+            """)
+        
+        colour_rgb_str = f"rgb({self.light_rgb_tuple[0]}, {self.light_rgb_tuple[1]}, {self.light_rgb_tuple[2]})"
+
+        
+        for action in self.ColourMenu.actions():
+            widget = action.defaultWidget()
+            if widget:
+                #find the label inside the embedded widget to style the text color
+                label = widget.findChild(QLabel)
+                
+                #apply the background and border-radius to the embedded widget itself
+                widget.setStyleSheet(f"""
+                    QWidget {{
+                        background-color: {colour_rgb_str};
+                        border-radius: 6px;
+                        margin: 2px 5px 2px 5px; /* Add margin to visually separate items */
+                    }}
+                """)
+                
+                if label:
+                    label.setStyleSheet(f"color: {self.hexval}") #needs a contrastive colour
+
+            #needs to happen again for engine menu, maybe this needs reworking??
+            #can't seem to find the engine labels?
+            # Apply styling to the browsermenu (Engine Selector)
+            for action in self.browsermenu.actions():
+                widget = action.defaultWidget()
+                if widget:
+                    # Get the engine name from the action data (e.g., 'google')
+                    engine_key = action.data()[0] 
+
+                    # Find the text label using its unique object name
+                    # findChild(Class, name) is safer than findChild(Class)
+                    text_label = widget.findChild(QLabel, f"browser_menu_text_label_{engine_key}")
+                    
+                    # Apply the background and border-radius to the embedded widget itself
+                    widget.setStyleSheet(f"""
+                        QWidget {{
+                            background-color: {colour_rgb_str};
+                            border-radius: 6px;
+                            margin: 2px 5px 2px 5px; /* Add margin to visually separate items */
+                        }}
+                    """)
+                    
+                    if text_label:
+                        text_label.setStyleSheet(f"color: {self.hexval}")
+
+
+
+
+    def ToggleColourTheme(self, profile, themes):
+        colourkeys = list(themes.keys())
+        keyselect = colourkeys.index(profile)
+        next_index = (keyselect + 1) % len(colourkeys)
+        next_profile = colourkeys[next_index]
+        
+        self.selectedprofile = next_profile
+        #all colour profile change handling is done in SelectColourTheme function to reduce total lines
+        self.SelectColourTheme(next_profile, themes)
+
+        
+
+    #system for when I implement the main colourtheme editor
+    def ColourThemeEditor(self):
+        print("ColourThemeEditor still WIP")
+        pass
+
+    
+
+
+
+
+    '''Cookie Management'''
+
+    def on_cookie_received(self, cookie):
+        #these three aren't technically doing anything but they're good references for later
+        name = cookie.name().data().decode(errors='ignore')
+        domain = cookie.domain()
+        value = cookie.value().data().decode()
+        #actual logic - refresh cookie dictionary each time a new one is added
+        self.cookiedict = self.cookieManager.on_cookie_added(cookie)
+
+
+    def cookieGUI(self):
+        self.cookieMenu.clear()
+        row_colour = f"rgb({self.light_rgb_tuple[0]}, {self.light_rgb_tuple[1]}, {self.light_rgb_tuple[2]})"
+
+        if not hasattr(self, 'cookiedict') or not self.cookiedict:
+            self.cookieMenu.addAction("No cookies detected yet.")
+            return
+
+        #Scroll bar system
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                background-color: {self.hexval};
+                border: none;
+            }}
+            /* Target the internal container specifically */
+            QScrollArea > QWidget > QWidget {{ 
+                background-color: {self.hexval};
+            }}
+            /* Custom Scrollbar styling to make it look modern */
+            QScrollBar:vertical {{
+                border: none;
+                background: {self.hexval};
+                width: 8px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: rgba(255, 255, 255, 0.3); /* Semi-transparent white */
+                min-height: 20px;
+                border-radius: 4px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
+        
+        # Set max height to prevent the menu from growing off-screen
+        scroll_area.setMaximumHeight(400)
+        scroll_area.setFixedWidth(500)
+
+        #Row Containers
+        container_widget = QWidget()
+        container_layout = QVBoxLayout(container_widget)
+        container_layout.setContentsMargins(5, 5, 5, 5)
+        container_layout.setSpacing(8)
+
+        #Add rows to scroll bar
+        for cookieID, value in self.cookiedict.items():
+            cookie_row = QWidget()
+            cookie_row.setObjectName("CookieRow")
+            row_layout = QHBoxLayout(cookie_row)
+            
+            name = (value["name"][:15] + "..") if len(value["name"]) > 15 else value["name"]
+            name_label = QLabel(name)
+            predict_label = QLabel(f"({value['prediction']})")
+            predict_label.setStyleSheet(f"color: {self.hexval}; font-size: 10px;")
+            
+            btn_accept = QPushButton("✓")
+            btn_deny = QPushButton("✕")
+
+            btn_accept.setStyleSheet(f"background-color: {self.hexval}; color: {row_colour};")
+            btn_deny.setStyleSheet(f"background-color: {self.hexval}; color: {row_colour};")
+            
+            # Connect buttons (using the handle_cookie_action from previous step)
+            btn_accept.clicked.connect(lambda _, id=cookieID: self.handle_cookie_action(id, "accept"))
+            btn_deny.clicked.connect(lambda _, id=cookieID: self.handle_cookie_action(id, "deny"))
+
+            row_layout.addWidget(name_label)
+            row_layout.addWidget(predict_label)
+            row_layout.addStretch()
+            row_layout.addWidget(btn_accept)
+            row_layout.addWidget(btn_deny)
+
+            # Styling
+            cookie_row.setStyleSheet(f"#CookieRow {{ background-color: {row_colour}; border-radius: 6px; }}")
+            
+            container_layout.addWidget(cookie_row)
+
+        # Add a stretch at the end to keep rows at the top if there are few
+        container_layout.addStretch()
+        
+        #Apply widget to scroll area
+        scroll_area.setWidget(container_widget)
+        
+        # Host the entire ScrollArea inside one QWidgetAction
+        menu_scroll_action = QWidgetAction(self.cookieMenu)
+        menu_scroll_action.setDefaultWidget(scroll_area)
+        self.cookieMenu.addAction(menu_scroll_action)
+
+    def handle_cookie_action(self, cookieID, action_type):
+        """Helper to process data and force a refresh while menu is open."""
+        if action_type == "accept":
+            self.cookieManager.acceptCookie(cookieID)
+        else:
+            self.cookieManager.cookieEVAPORATOR(cookieID)
+        
+        #Re-Run gui builder
+        self.cookieManager.refresh_cookie_list()
+        self.cookieMenu.adjustSize()
+        self.cookieGUI() 
+
+
+
+
+
+'''Main execution loop'''
+    
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = ExtensionLoader()
+    window = Browser()
     window.show()
     sys.exit(app.exec())
