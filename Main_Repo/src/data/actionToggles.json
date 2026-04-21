@@ -3,5 +3,8 @@
     "Encrypted-Client Hello": true,
     "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny On Leave": 0,
-    "Save-Tabs-On-Restart": 0
+    "Save-Tabs-On-Restart": 0,
+    "tab_position": "East",
+    "top_bar": ["nav_bar"],
+    "bottom_bar": []
 }
