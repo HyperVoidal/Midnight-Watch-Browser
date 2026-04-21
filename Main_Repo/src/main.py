@@ -494,7 +494,11 @@ class Browser(QMainWindow):
 
         self.update_tab_sizes()
         self.update_tab_icon(self.current_browser)
-        VerticalTabBar.update_close_buttons(self.tabs.tabBar())
+        #fix close button not disappearing issue for vertical tabs when a new one is created
+        if toggles["tab_position"] in ["East", "West"]:
+            VerticalTabBar.update_close_buttons(self.tabs.tabBar())
+        else:
+            pass
         return browser
     
     def update_tab_icon(self, browser):
