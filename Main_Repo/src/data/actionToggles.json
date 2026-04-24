@@ -6,5 +6,5 @@
     "Save-Tabs-On-Restart": 0,
     "tab_position": "North",
     "top_bar": ["nav_bar"],
-    "bottom_bar": []
+    "bottom_bar": ["bookmarks_bar"]
 }

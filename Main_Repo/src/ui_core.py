@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from PySide6.QtGui import QIcon, QTransform
+import requests
+from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QRect, QSize, QTimer, QUrl, Qt
 from PySide6.QtWidgets import QTabWidget
@@ -86,6 +87,36 @@ class BarManager:
 
         return self.nav_bar
     
+    def setup_bookmarksbar(self):
+        self.bookmarks_bar = QToolBar("Bookmarks")
+        self.bookmarks_bar.setMovable(False)
+        self.bookmarks_bar.setStyleSheet("background:rgb(1, 1, 100)")
+        self.eColsStyle.append("bookmarks_bar")
+
+        with open (f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
+            bookmarkData = dict(json.load(f))
+        
+        for element in bookmarkData.keys():
+            Bbutton = QPushButton(str(element).capitalize())
+
+            url = (bookmarkData[element] + "/favicon.ico")
+            response = requests.get(url)
+            if response.status_code == 200: 
+                image = QImage()
+                image.loadFromData(response.content)
+                pixmap = QPixmap.fromImage(image)
+
+            Bbutton.setIcon(QIcon(pixmap))
+            Bbutton.setIconSize(QSize(16, 16))
+            Bbutton.clicked.connect(lambda checked, t=str(bookmarkData[element]), l=str(element): self.parent.add_new_tab(qurl=t, label=l))
+            Bbutton_action = QWidgetAction(self.parent)
+            Bbutton_action.setDefaultWidget(Bbutton)
+
+            self.bookmarks_bar.addAction(Bbutton_action)
+
+        return self.bookmarks_bar
+
+
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
         """Creates all buttons for navbar"""
         btn = QToolButton(self.parent)

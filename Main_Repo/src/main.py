@@ -131,8 +131,11 @@ def update_filters():
 
 
 #Converts image to an alpha channel and a colour channel. Turns all colours to white, removes alpha, then triggers a mask recolour to the desired appearance bsaed on json file
-def buttoncolourer(k, v):
-    name = (str(k).split("_btn"))[0]
+def buttoncolourer(k, v, name=None):
+    if name == None:
+        name = (str(k).split("_btn"))[0]
+    else:
+        pass
     filepath = (f"{icon_cache_dir}/{name}.png")
     img = Image.open(filepath).convert('RGBA')
     r, g, b, a = img.split() #only need 'a' value
@@ -226,6 +229,8 @@ class Browser(QMainWindow):
         self.tabs.currentChanged.connect(self.switch_tab)
 
         self.nav_bar = self.barManager.setup_navbar()
+
+        self.bookmarks_bar = self.barManager.setup_bookmarksbar()
 
 
         with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
@@ -625,6 +630,35 @@ class Browser(QMainWindow):
         pass
 
     def update_url_bar_buttons(self, url, browser):
+        with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+            Colourdata = json.load(f)
+        with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
+            bookmarkData = json.load(f)
+        
+        colour = Colourdata[self.selectedprofile]["bookmark_btn"]
+
+        print(self.current_browser.url().toString())
+
+        #check current url, if not added, grab the unadded bookmark button, otherwise grab the added bookmark button
+        if self.current_browser.url().toString() in bookmarkData.values():
+            buttoncolourer("bookmark_btn", colour, "BookmarkAdded")
+            icon = get_normIcon("BookmarkAdded")
+            self.bookmark_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
+            self.bookmark_button.setToolTip("Remove Bookmark")
+            self.bookmark_button.triggered.connect(lambda: self.remove_bookmark(self.current_browser.url().toString()))
+        else:
+            buttoncolourer("bookmark_btn", colour, "BookmarkNotAdded")
+            icon = get_normIcon("BookmarkNotAdded")
+            self.bookmark_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
+            self.bookmark_button.setToolTip("Add Bookmark")
+            self.bookmark_button.triggered.connect(lambda: self.add_bookmark(self.current_browser.url().toString()))
+        
+        self.url_bar.update()
+
+        
+
+
+        
         #NOTE the below code doesn't work because it was designed for the extensions system and I've commented it out for safety.
         #I'm keeping it around after the removal of the extensions system because it has some useful references for how I might 
         #implement additions to the URL bar such as bookmarking a link or something else I might think of e.g. automatic webpage colour switching (dark reader emulation)
@@ -663,6 +697,17 @@ class Browser(QMainWindow):
             engineData[self.engine]["active"] = True
             with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
                 json.dump(engineData, f)
+
+
+    '''Bookmarks System'''
+    
+    #needs to create a menu popup that can accept a name input. Use Qsanitiser system to clean user input to keep everything safe
+    def add_bookmark(self):
+        pass
+
+    def remove_bookmark(self):
+        pass
+    
 
 
 
