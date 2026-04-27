@@ -3,7 +3,7 @@ from pathlib import Path
 import requests
 from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QRect, QSize, QTimer, QUrl, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QTabBar, QStylePainter, QStyleOptionTab, QStyle
 from PySide6.QtCore import QSize
@@ -94,28 +94,120 @@ class BarManager:
         self.eColsStyle.append("bookmarks_bar")
         self.eColsButton.append("bookmarks_btn")
 
-        with open (f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
-            bookmarkData = dict(json.load(f))
-        
-        for element in bookmarkData.keys():
-            Bbutton = QPushButton(str(element).capitalize())
+        try:
+            with open (f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
+                bookmarkData = dict(json.load(f))
+            
+            for bid, data in bookmarkData.items():
+                name = data["name"]
+                url = data["url"]
+                Bbutton = QPushButton(name.capitalize())
 
-            url = (bookmarkData[element] + "/favicon.ico")
-            response = requests.get(url)
-            if response.status_code == 200: 
-                image = QImage()
-                image.loadFromData(response.content)
-                pixmap = QPixmap.fromImage(image)
+                FAVurl = f"https://www.google.com/s2/favicons?domain={QUrl(url).host()}&sz=32"
+                response = requests.get(FAVurl)
+                if response.status_code == 200: 
+                    image = QImage()
+                    image.loadFromData(response.content)
+                    pixmap = QPixmap.fromImage(image)
+                else:
+                    #use image for tabIcon.png
+                    pixmap = QPixmap(str(icon_cache_dir / "tabIcon.png"))
 
-            Bbutton.setIcon(QIcon(pixmap))
-            Bbutton.setIconSize(QSize(16, 16))
-            Bbutton.clicked.connect(lambda checked, t=str(bookmarkData[element]), l=str(element): self.parent.add_new_tab(qurl=t, label=l))
-            Bbutton_action = QWidgetAction(self.parent)
-            Bbutton_action.setDefaultWidget(Bbutton)
+                Bbutton.setIcon(QIcon(pixmap))
+                Bbutton.setIconSize(QSize(16, 16))
+                Bbutton.clicked.connect(partial(self.parent.load_url, qurl=url, label=name))
+                Bbutton_action = QWidgetAction(self.parent)
+                Bbutton_action.setDefaultWidget(Bbutton)
 
-            self.bookmarks_bar.addAction(Bbutton_action)
+                #Right click context menu 
+                Bbutton.setContextMenuPolicy(Qt.CustomContextMenu)
+                Bbutton.customContextMenuRequested.connect(partial(self.show_bookmark_menu, Bbutton, bid))
+
+                self.bookmarks_bar.addAction(Bbutton_action)
+
+        except json.decoder.JSONDecodeError:
+            print("No bookmarks saved, skipping.")
 
         return self.bookmarks_bar
+    
+    def show_bookmark_menu(self, button, bid, pos):
+        menu = QMenu()
+
+        with open(f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
+            data = json.load(f)
+
+        bookmark = data[bid]
+        name = bookmark["name"]
+        url = bookmark["url"]
+
+        rename = menu.addAction("Rename")
+        delete = menu.addAction("Delete")
+        open_tab = menu.addAction("Open in New Tab")
+
+        action = menu.exec(button.mapToGlobal(pos))
+
+        if action == rename:
+            new_name = self.parent.WindowInput(
+                "Rename Bookmark", "Enter new name:", default_text=name
+            )
+
+            if new_name:
+                data[bid]["name"] = new_name
+
+                with open(f"{self.srcSourceDir}/data/bookmarks.json", "w") as f:
+                    json.dump(data, f, indent=4)
+
+                self.refresh_bookmarksbar()
+
+        elif action == delete:
+            self.parent.remove_bookmark(bid)
+
+        elif action == open_tab:
+            self.parent.add_new_tab(qurl=url, label=name)
+
+    def refresh_bookmarksbar(self):
+        self.bookmarks_bar.clear()
+        try:
+            with open(f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
+                bookmarkData = json.load(f)
+
+            for bid, data in bookmarkData.items():
+                name = data["name"]
+                url = data["url"]
+                btn = QPushButton(name.capitalize())
+
+                try:
+                    domain = QUrl(url).host()
+                    icon_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
+                    response = requests.get(icon_url, timeout=5)
+
+                    if response.status_code == 200:
+                        image = QImage()
+                        image.loadFromData(response.content)
+                        pixmap = QPixmap.fromImage(image)
+                    else:
+                        pixmap = QPixmap(str(icon_cache_dir / "tabIcon.png"))
+
+                except:
+                    pixmap = QPixmap(str(icon_cache_dir / "tabIcon.png"))
+
+                btn.setIcon(QIcon(pixmap))
+                btn.setIconSize(QSize(16, 16))
+
+                btn.clicked.connect(
+                    lambda checked, t=url, l=name: self.parent.add_new_tab(qurl=t, label=l)
+                )
+
+                action = QWidgetAction(self.parent)
+                action.setDefaultWidget(btn)
+                self.bookmarks_bar.addAction(action)
+
+            #link to right click context menu after refreshing
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(partial(self.show_bookmark_menu, btn, bid))
+        except (json.decoder.JSONDecodeError, UnboundLocalError):
+            print("Can't refresh bookmarks as none exist in the json file!")
+            pass
 
 
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
@@ -335,8 +427,8 @@ class BarManager:
             btn_deny.setStyleSheet(f"background-color: {self.parent.hexval}; color: {row_colour};")
             
             # Connect buttons (using the handle_cookie_action from previous step)
-            btn_accept.clicked.connect(lambda _, id=cookieID: self.parent.handle_cookie_action(id, "accept"))
-            btn_deny.clicked.connect(lambda _, id=cookieID: self.parent.handle_cookie_action(id, "deny"))
+            btn_accept.clicked.connect(lambda _, Cid=cookieID: self.parent.handle_cookie_action(Cid, "accept"))
+            btn_deny.clicked.connect(lambda _, Cid=cookieID: self.parent.handle_cookie_action(Cid, "deny"))
 
             row_layout.addWidget(name_label)
             row_layout.addWidget(predict_label)

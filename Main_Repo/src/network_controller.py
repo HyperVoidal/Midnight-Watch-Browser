@@ -36,6 +36,7 @@ class UrlManager():
             if (
                 key.startswith("utm_") or
                 key == "si" or
+                key == "sei" or
                 key in ("fbclid", "gclid")
             ):
                 continue

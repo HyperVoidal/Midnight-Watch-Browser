@@ -18,6 +18,7 @@ import os
 from PIL import Image, ImageOps
 import json
 import re
+import uuid
 from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker, UrlManager
 from ui_core import *
 from cookieManager import CookieManager
@@ -442,6 +443,19 @@ class Browser(QMainWindow):
                                      QMessageBox.StandardButton.No |
                                      QMessageBox.StandardButton.Yes)
         return reply == QMessageBox.StandardButton.Yes
+    
+
+    def WindowInput(self, title, message, default_text=""):
+        text, ok = QInputDialog.getText(
+            self,
+            title,
+            message,
+            QLineEdit.EchoMode.Normal,
+            default_text
+        )
+        if ok and text.strip():
+            return text.strip()
+        return None
 
 
 
@@ -626,8 +640,13 @@ class Browser(QMainWindow):
 
     '''URL Handling'''
 
-    def load_url(self):
-        #had to encase this in a try-except loop, there's an odd keyboardinterrupt error that is cased by virtually nothing and fixes by pressing enter again, this should circumvent.
+    def load_url(self, qurl=None, label=None):
+        if qurl is not None:
+            self.current_browser.setUrl(qurl)
+            if label is not None:
+                self.update_tab_title(self.current_browser, title=label)
+            return
+
         input_text = self.url_bar.text().strip()
         if not input_text:
             return
@@ -653,13 +672,30 @@ class Browser(QMainWindow):
         #attempt to close extra boxes on blocked ads
         CosmeticBlocker.inject_css(browser)
         ScriptletBlocker.inject_scriptlets(browser)
+        #extra case for final updates, catchall for url changes after loading a new page, finishing loading a different page, etc
+        clean_url = self.UrlManager.normalise_url(self.current_browser.url().toString())
+        if clean_url.endswith("homepage.html"):
+            self.url_bar.setText("Homepage")
+        else:
+            self.url_bar.setText(clean_url)
         pass
 
     def update_url_bar_buttons(self, url, browser):
+        normalised_bookmarks = {}
+        current = self.UrlManager.normalise_url(self.current_browser.url().toString())
+
+        
         with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
             Colourdata = json.load(f)
-        with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
-            bookmarkData = json.load(f)
+        try:
+            with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
+                bookmarkData = json.load(f)
+
+            #load bookmarks and compare against normalised
+            normalised_bookmarks = {bid: self.UrlManager.normalise_url(data["url"]) for bid, data in bookmarkData.items()}
+
+        except json.decoder.JSONDecodeError:
+            print("Nothing in bookmarks folder, skipping.")
         
         colour = Colourdata[self.selectedprofile]["bookmark_btn"]
 
@@ -671,19 +707,16 @@ class Browser(QMainWindow):
             self.bookmark_button.triggered.disconnect()
         except:
             pass
-
-        #load bookmarks and compare against normalised
-        normalised_bookmarks = {key: self.UrlManager.normalise_url(url) for key, url in bookmarkData.items()}
-        current = self.UrlManager.normalise_url(self.current_browser.url().toString())
         
         #load bookmark actions based on current tab
-        if current in normalised_bookmarks.values():
+        matched_id = next((bid for bid, url in normalised_bookmarks.items() if url == current), None)
+        if matched_id:
             iconpath = buttoncolourer("BookmarkAdded", colour, "BookmarkAdded")
             icon = QIcon(str(iconpath))
             self.bookmark_button.setIcon(icon)
             self.bookmark_button.setToolTip("Remove Bookmark")
             self.bookmark_button.triggered.connect(
-                lambda: self.remove_bookmark(self.current_browser.url().toString())
+                lambda: self.remove_bookmark(matched_id)
             )
         else:
             iconpath = buttoncolourer("BookmarkNotAdded", colour, "BookmarkNotAdded")
@@ -741,14 +774,50 @@ class Browser(QMainWindow):
 
 
     '''Bookmarks System'''
-    
+
     #needs to create a menu popup that can accept a name input. Use Qsanitiser system to clean user input to keep everything safe
     def add_bookmark(self, url):
-        
-        pass
+        name = self.WindowInput(
+            "Add Bookmark",
+            "Enter bookmark name:",
+            self.tabs.tabText(self.tabs.currentIndex())
+        )
 
-    def remove_bookmark(self, url):
-        pass
+        if not name:
+            return
+        
+        try:
+            with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
+                data = json.load(f)
+        except:
+            data = {}
+
+        new_id = str(uuid.uuid4())
+
+        data[new_id] = {
+            "name": name,
+            "url": url
+        }
+
+        with open(f"{srcSourceDir}/data/bookmarks.json", "w") as f:
+            json.dump(data, f, indent=4)
+
+        #reload bookmarks bar to show new bookmark
+        self.barManager.refresh_bookmarksbar()
+        self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
+
+    def remove_bookmark(self, id):
+        with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
+            data = json.load(f)
+
+        del data[id]
+
+        with open(f"{srcSourceDir}/data/bookmarks.json", "w") as f:
+            json.dump(data, f)
+        
+        self.barManager.refresh_bookmarksbar()
+        self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
+
     
 
 
