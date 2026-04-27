@@ -92,6 +92,7 @@ class BarManager:
         self.bookmarks_bar.setMovable(False)
         self.bookmarks_bar.setStyleSheet("background:rgb(1, 1, 100)")
         self.eColsStyle.append("bookmarks_bar")
+        self.eColsButton.append("bookmarks_btn")
 
         with open (f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
             bookmarkData = dict(json.load(f))

@@ -1,7 +1,66 @@
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEngineScript
+from PySide6.QtCore import QUrl, QUrlQuery, QUrlQuery
 from engine_bridge import is_url_safe, get_cosmetic_filters, get_scriptlets
 from pathlib import Path
 srcSourceDir = Path(__file__).parent
+
+
+class UrlManager():
+    def __init__(self):
+        pass
+
+    def normalise_url(navlink: bool, url_input: str):
+        qurl = QUrl.fromUserInput(url_input)
+
+        # Guard clause for invalid URLs
+        if not qurl.isValid():
+            return ""
+        
+        #Guard clause for html files like the homepage
+        if qurl.scheme() == "file":
+            return qurl.toString()
+
+        # Force lowercase host
+        qurl.setHost(qurl.host().lower())
+
+        # Remove default ports
+        if qurl.port() in (80, 443):
+            qurl.setPort(-1)
+
+        # Strip tracking query params
+        query = QUrlQuery(qurl)
+        clean_query = QUrlQuery()
+
+        for key, value in query.queryItems():
+            # Skip unwanted params
+            if (
+                key.startswith("utm_") or
+                key == "si" or
+                key in ("fbclid", "gclid")
+            ):
+                continue
+
+            # Only add once
+            clean_query.addQueryItem(key, value)
+        
+        qurl.setQuery(clean_query)
+
+        if not navlink: #only run this when not sanitising navigation links. Bookmarks need agressive normalisation but doing so for navlinks might break some sites
+            host = qurl.host()
+            if host.startswith("www."):
+                qurl.setHost(host[4:])
+
+            # normalise path
+            path = qurl.path()
+            if path.endswith("/") and path != "/":
+                path = path.rstrip("/")
+            if path == "":
+                path = "/"
+
+            qurl.setPath(path)
+        
+        return qurl.toString()
+    
 
 
 class AdInterceptor(QWebEngineUrlRequestInterceptor):

@@ -18,7 +18,7 @@ import os
 from PIL import Image, ImageOps
 import json
 import re
-from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker
+from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker, UrlManager
 from ui_core import *
 from cookieManager import CookieManager
 
@@ -287,7 +287,11 @@ class Browser(QMainWindow):
         self.engine = engine
         self.engine_btn = None
         self.engine_btn, self.browserMenu = self.barManager.setup_engine_button(engines)
-        self.current_browser.urlChanged.connect((lambda q: self.url_bar.setText(q.toString())))
+        self.current_browser.urlChanged.connect((lambda qurl, browser=self.current_browser: self.on_url_changed(qurl, browser)))
+
+        
+        #Url Manager
+        self.UrlManager = UrlManager()
 
 
 
@@ -463,9 +467,6 @@ class Browser(QMainWindow):
 
     '''Tab Management'''
 
-    def current_browser(self):
-        return self.tabs.currentWidget()
-    
     def add_new_tab(self, qurl=None, label="New Tab"):
         if qurl is None or isinstance(qurl, bool):
             qurl = QUrl.fromLocalFile(f"{srcSourceDir}/ui/homepage.html")
@@ -493,9 +494,12 @@ class Browser(QMainWindow):
         browser.loadFinished.connect(lambda ok, b=browser: (self.barManager.stop_reload_animation(), self.on_load_finished(browser)))
         browser.titleChanged.connect(lambda title, browser=browser: self.update_tab_title(browser, title))
 
-        
-        if qurl.toString().endswith("homepage.html"):
-            self.url_bar.setText("Homepage")
+        try:
+            if qurl.toString().endswith("homepage.html"):
+                self.url_bar.setText("Homepage")
+        except AttributeError:
+            if qurl.endswith("homepage.html"):
+                self.url_bar.setText("Homepage")
 
         self.update_tab_sizes()
         self.update_tab_icon(self.current_browser)
@@ -505,6 +509,13 @@ class Browser(QMainWindow):
         else:
             pass
         return browser
+    
+    def on_url_changed(self, qurl, browser):
+        if browser != self.current_browser:
+            return
+
+        clean = self.UrlManager.normalise_url(qurl.toString())
+        self.url_bar.setText(clean)
     
     def update_tab_icon(self, browser):
         tab_index = self.tabs.indexOf(browser)
@@ -542,17 +553,28 @@ class Browser(QMainWindow):
         current_browser = self.tabs.widget(index)
         if current_browser:
             self.current_browser = current_browser
-            self.url_bar.setText(current_browser.url().toString())
             if current_browser.url().toString().endswith("homepage.html"):
                 self.url_bar.setText("Homepage")
+            else:
+                raw_url = current_browser.url().toString()
+                clean_url = self.UrlManager.normalise_url(raw_url)
+                self.url_bar.setText(clean_url)
+            
+            #update url bar buttons, especially bookmarks
+            self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
             
 
     def update_tab_title(self, browser, title=None):
         i = self.tabs.indexOf(browser)
         if i != -1:
-            # Use provided title or fallback
+
+            #update url bar buttons
+            self.update_url_bar_buttons(browser.url().toString(), browser)
+
+
+            # Use provided title or fallback to using default with guard clause
             if not title:
-                title = browser.url().toString()
+                return
 
             # Clean it up a bit for display
             if len(title) > 60:
@@ -562,7 +584,6 @@ class Browser(QMainWindow):
                 title = 'Homepage'
 
             self.tabs.setTabText(i, title)
-            self.update_url_bar_buttons(browser.url().toString(), browser)
             
         pass
 
@@ -613,7 +634,7 @@ class Browser(QMainWindow):
 
         # QUrl.fromUserInput automatically handles missing schemes (adds http://)
         # and checks if the string looks like a valid web address
-        url = QUrl.fromUserInput(input_text)
+        url = QUrl.fromUserInput(UrlManager.normalise_url(True, input_text))
 
         if url.isValid() and "." in input_text and " " not in input_text:
             # It's a valid URL (e.g., "google.com")
@@ -622,6 +643,11 @@ class Browser(QMainWindow):
             # It's a search query
             search_url = engines[engine] + input_text.replace(" ", "+")
             self.current_browser.setUrl(QUrl(search_url))
+
+        #update url bar to proper cleaned url text
+        raw_url = self.current_browser.url().toString()
+        clean_url = self.UrlManager.normalise_url(raw_url)
+        self.url_bar.setText(clean_url)
 
     def on_load_finished(self, browser):
         #attempt to close extra boxes on blocked ads
@@ -637,21 +663,36 @@ class Browser(QMainWindow):
         
         colour = Colourdata[self.selectedprofile]["bookmark_btn"]
 
-        print(self.current_browser.url().toString())
+        if not hasattr(self, "bookmark_button"):
+            self.bookmark_button = self.url_bar.addAction(QIcon(), QLineEdit.TrailingPosition)
 
-        #check current url, if not added, grab the unadded bookmark button, otherwise grab the added bookmark button
-        if self.current_browser.url().toString() in bookmarkData.values():
-            buttoncolourer("bookmark_btn", colour, "BookmarkAdded")
-            icon = get_normIcon("BookmarkAdded")
-            self.bookmark_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
+        #disconnect previous signals
+        try:
+            self.bookmark_button.triggered.disconnect()
+        except:
+            pass
+
+        #load bookmarks and compare against normalised
+        normalised_bookmarks = {key: self.UrlManager.normalise_url(url) for key, url in bookmarkData.items()}
+        current = self.UrlManager.normalise_url(self.current_browser.url().toString())
+        
+        #load bookmark actions based on current tab
+        if current in normalised_bookmarks.values():
+            iconpath = buttoncolourer("BookmarkAdded", colour, "BookmarkAdded")
+            icon = QIcon(str(iconpath))
+            self.bookmark_button.setIcon(icon)
             self.bookmark_button.setToolTip("Remove Bookmark")
-            self.bookmark_button.triggered.connect(lambda: self.remove_bookmark(self.current_browser.url().toString()))
+            self.bookmark_button.triggered.connect(
+                lambda: self.remove_bookmark(self.current_browser.url().toString())
+            )
         else:
-            buttoncolourer("bookmark_btn", colour, "BookmarkNotAdded")
-            icon = get_normIcon("BookmarkNotAdded")
-            self.bookmark_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
+            iconpath = buttoncolourer("BookmarkNotAdded", colour, "BookmarkNotAdded")
+            icon = QIcon(str(iconpath))
+            self.bookmark_button.setIcon(icon)
             self.bookmark_button.setToolTip("Add Bookmark")
-            self.bookmark_button.triggered.connect(lambda: self.add_bookmark(self.current_browser.url().toString()))
+            self.bookmark_button.triggered.connect(
+                lambda: self.add_bookmark(self.UrlManager.normalise_url(self.current_browser.url().toString()))
+            )
         
         self.url_bar.update()
 
@@ -702,10 +743,11 @@ class Browser(QMainWindow):
     '''Bookmarks System'''
     
     #needs to create a menu popup that can accept a name input. Use Qsanitiser system to clean user input to keep everything safe
-    def add_bookmark(self):
+    def add_bookmark(self, url):
+        
         pass
 
-    def remove_bookmark(self):
+    def remove_bookmark(self, url):
         pass
     
 
@@ -786,6 +828,9 @@ class Browser(QMainWindow):
                                 image: url({str(colouredpath)}); /* Correct way to set the icon image */
                             }}
                         """)
+
+                        #update any icons in the url bar by rerunning url bar update
+                        self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
                 #select file from system and use PIL to change based on colour v, then s
                 pass
 
@@ -855,6 +900,13 @@ class Browser(QMainWindow):
                     bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
                     text_rgb_str = f"rgb({text_qcolor.red()}, {text_qcolor.green()}, {text_qcolor.blue()})"
                     self.url_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
+
+                elif k == "bookmarks_bar":
+                    # set the bookmarks bar background color and text contrast
+                    bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
+                    text_rgb_str = f"rgb({self.contrast_qcolor.red()}, {self.contrast_qcolor.green()}, {self.contrast_qcolor.blue()})"
+                    self.bookmarks_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
+
             else:
                 print(f"other: {k}")
                 pass
