@@ -4,7 +4,13 @@
     "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny On Leave": 0,
     "Save-Tabs-On-Restart": 0,
-    "tab_position": "North",
-    "top_bar": ["nav_bar"],
-    "bottom_bar": ["bookmarks_bar"]
+    "Tab-Position": "North",
+    "Top-Bar": ["nav_bar"],
+    "Bottom-Bar": ["bookmarks_bar"],
+    "Time-Display": ["HH:mm", false],
+    "Date-Display": ["ISO", true],
+    "Name": "MidnightGuard",
+    "Greeting": true,
+    "Blur": 10,
+    "Image-Url": "MainImageBackground.png"
 }

@@ -41,11 +41,11 @@ class BarManager:
 
 
     def setup_tabs(self):
-        if self.actionToggles["tab_position"] in ["North", "South"]:
+        if self.actionToggles["Tab-Position"] in ["North", "South"]:
             self.tabs = QTabWidget()
             self.tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
 
-        elif self.actionToggles["tab_position"] in ["East", "West"]:
+        elif self.actionToggles["Tab-Position"] in ["East", "West"]:
             self.tabs = QTabWidget()
             self.tabs.setTabBar(VerticalTabBar())
         else:
@@ -309,6 +309,7 @@ class BarManager:
         self.engine_btn = QToolButton(self.parent)
         self.engine_btn.setText("Search With...")
         self.browserMenu = QMenu(self.parent)
+        self.engine_btn.setToolTip("Select/Switch Search Engines")
 
         for key, search_url in engines.items():
             # Create widget for menu item

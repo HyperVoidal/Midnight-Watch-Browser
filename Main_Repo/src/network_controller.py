@@ -1,13 +1,44 @@
-from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEngineScript
-from PySide6.QtCore import QUrl, QUrlQuery, QUrlQuery
+from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEngineScript, QWebEngineUrlRequestJob
+from PySide6.QtCore import QUrl, QUrlQuery, QUrlQuery, QBuffer, QIODevice, QByteArray, QFile
 from engine_bridge import is_url_safe, get_cosmetic_filters, get_scriptlets
+from PySide6.QtWebEngineCore import QWebEngineUrlScheme, QWebEngineUrlSchemeHandler
 from pathlib import Path
+import os
 srcSourceDir = Path(__file__).parent
+
+
+#This will have to stay it's own class to avoid conflicts with UrlManager systems
+class UrlCustomSchemeManager(QWebEngineUrlSchemeHandler):
+    def requestStarted(self, job):
+        url = job.requestUrl()
+        path = url.path().lstrip('/') 
+        file_path = os.path.join(srcSourceDir, "ui", path)
+
+        if os.path.exists(file_path):
+            #Open the file directly as a QIODevice
+            file = QFile(file_path)
+            
+            #Set the 'job' as the parent so C++ deletes the file object 
+            # automatically when the request is done. No Python dicts needed!
+            file.setParent(job) 
+            
+            if file.open(QIODevice.OpenModeFlag.ReadOnly):
+                mime = "text/html" if path.endswith(".html") else "image/png"
+                if path.endswith(".css"): mime = "text/css"
+                
+                #Pass the file object directly to reply
+                job.reply(mime.encode(), file)
+                return
+
+        job.fail(QWebEngineUrlRequestJob.Error.UrlNotFound)
+
+
 
 
 class UrlManager():
     def __init__(self):
         pass
+
 
     def normalise_url(navlink: bool, url_input: str):
         qurl = QUrl.fromUserInput(url_input)

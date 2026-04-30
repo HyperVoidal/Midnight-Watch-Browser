@@ -4,9 +4,263 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home Page</title>
-    <h1>Midnight Engine Homepage</h1>
+    <style>
+        /* Set default values in case the bridge hasn't loaded yet */
+        :root {
+            --bg-blur: 15px;
+            --background: url('images/MainImageBackground.png')
+        }
+
+        /*Remove default margins and hide scrollbars*/
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .background-wrapper {
+            position: relative;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--background) no-repeat center/cover;
+        }
+
+        .background-wrapper::before {
+            content: "";
+            position: absolute;
+            top: 0; 
+            left: 0; 
+            right: 0; 
+            bottom: 0;
+            backdrop-filter: blur(var(--bg-blur));
+            -webkit-backdrop-filter: blur(15px);
+            background: rgba(0, 0, 0, 0.2); /*Minor image darkening*/
+            transition: backdrop-filter 0.5s ease;
+            z-index: 1;
+        }
+
+        /*Keep text on top of blur*/
+        .content {
+            position: relative;
+            z-index: 2;
+            color: white;
+            text-align: center;
+            font-family: sans-serif;
+        }
+
+        .time-date-container {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            text-align: right;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end; /* Keeps text aligned to the right */
+        }
+        
+        .greeting-container {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            text-align: left;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start; /* Keeps text aligned to the left */
+        }
+
+        .separator-right {
+            border: 0;
+            height: 1px;
+            background-image: linear-gradient(to left, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0));
+            margin: 5px 0;
+            width: 100%;
+        }
+
+        .separator-left {
+            border: 0;
+            height: 1px;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0));
+            margin: 5px 0;
+            width: 100%;
+        }
+
+        /* Container that shrinks/grows with content */
+        .search-container {
+            display: inline-grid;
+            /* Make grid as small as possible */
+            grid-template-columns: min-content; 
+            justify-content: center;
+            position: relative;
+            margin-top: 20px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.5);
+            transition: border-bottom 0.3s ease;
+            /* Prevent it from jumping to 0px wide when empty */
+            min-width: 200px; 
+            max-width: 600px;
+            overflow: hidden;
+            mask-image: linear-gradient(to right, black 95%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, black 95%, transparent 100%);
+        }
+
+        .search-container:focus-within {
+            border-bottom: 2px solid white; /* Highlight underline on click */
+        }
+
+        /* Search input field */
+        #engine-search-bar {
+            grid-area: 1 / 1; /* Keeps everything in the same grid cell */
+            background: transparent;
+            border: none;
+            outline: none;
+            color: white;
+            font-size: 1.5rem;
+            padding: 5px 0;
+            width: 100%;
+            z-index: 2;
+            white-space: nowrap;
+        }
+
+        /* The Ghost element that pushes the width for the search box*/
+        .search-container::after {
+            content: attr(data-value) "\00a0"; /* Insert hidden character for spacing issue resolution */
+            grid-area: 1 / 1;
+            visibility: hidden;
+            white-space: pre;
+            font-size: 1.5rem;
+            padding: 5px 0;
+            min-width: 200px;
+            display: block;
+        }
+
+        /* Style the placeholder text color */
+        #engine-search-bar::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2rem;
+            color: white;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+
+        
+        h2 {
+            margin: 0;
+            font-size: 3rem;
+            color: white;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+
+        h3 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: white;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+        text {
+            padding: 10px;
+            width: 300px;
+            border-radius: 20px;
+            border: none;
+            outline: none;
+        }
+
+    </style>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        new QWebChannel(qt.webChannelTransport, (channel) => {
+            window.bridge = channel.objects.pyBridge;
+
+            const updateElements = () => {
+                // Time Display
+                bridge.getData("time", (time) => {
+                    document.getElementById('time-display').textContent = time;
+                });
+                // Date Display
+                bridge.getData("date", (date) => {
+                    document.getElementById('date-display').textContent = date;
+                });
+                //Greeting Display
+                bridge.getData("greeting", (greeting) => {
+                    document.getElementById('greeting-display').textContent = greeting;
+                });
+                //Blur Control - technically this could be outside of the greeting display but after settings implementation it's important to keep here
+                bridge.getData("blur", (blurValue) => {
+                    document.documentElement.style.setProperty("--bg-blur", blurValue);
+                });
+                //Background image control - again could be out of the greeting display but with settings implemented, continual updates are important
+                bridge.getData('BGimage', (imageURL) => {
+                    document.documentElement.style.setProperty("--background", `url('${imageURL}')`);
+                });
+            
+            };
+
+            const searchBox = document.getElementById('engine-search-bar');
+            const searchWrapper = document.getElementById('search-wrapper');
+            // Update the width of the underline as the user types
+            searchBox.addEventListener('input', () => {
+                searchWrapper.setAttribute('data-value', searchBox.value);
+            });
+
+            // Existing Enter key logic
+            searchBox.addEventListener("keypress", function(event) {
+                if (event.key == 'Enter') {
+                    event.preventDefault();
+                    sendSearchToPython();
+                    // Reset the expansion after search
+                    searchWrapper.setAttribute('data-value', ""); 
+                };
+            });
+
+            function sendSearchToPython() {
+                const searchInput = document.getElementById('engine-search-bar');
+                const query = searchInput.value;
+
+                if (query && window.bridge) {
+                    window.bridge.receiveSearchQuery(query)
+                    searchInput.value = ""; //clear bar after searching
+                };
+            };
+
+        // Call immediately so it's visible on page load
+        updateElements();
+        
+        //set interval for updates
+        setInterval(updateElements, 1000);
+    });
+
+    </script>
 </head>
 <body>
-    
+
+    <div class="background-wrapper">
+        <div class="time-date-container">
+            <h2 id="time-display"></h2> 
+            <hr class="separator-right">
+            <h3 id="date-display"></h3>
+        </div>
+        <div class="greeting-container">
+            <h1 id="greeting-display"></h1>
+            <hr class="separator-left">
+        </div>
+        <div class="content">
+            <h1>Midnight Engine</h1>  
+            <div class="search-container" id="search-wrapper" data-value="">
+                <input type="text" id="engine-search-bar" placeholder="Search the web..." autocomplete="off">
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

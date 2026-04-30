@@ -1,15 +1,16 @@
 import sys
 import warnings
-from PySide6.QtCore import QUrl 
+from PySide6.QtCore import QUrl, QObject, Slot, QDateTime
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineUrlScheme, QWebEngineUrlSchemeHandler
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtNetwork import QNetworkCookie, QNetworkCookieJar, QNetworkAccessManager
 from PySide6.QtWebEngineCore import QWebEngineCookieStore
+from PySide6.QtWebChannel import QWebChannel
 from urllib.parse import urlparse
 from pathlib import Path
 import requests
@@ -19,7 +20,7 @@ from PIL import Image, ImageOps
 import json
 import re
 import uuid
-from network_controller import AdInterceptor, EVAdInterceptor, CosmeticBlocker, ScriptletBlocker, UrlManager
+from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
 
@@ -63,6 +64,7 @@ eColsStyle = []
 
 #Apply starting settings from settings json file
 with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
+    global toggles
     toggles = dict(json.load(f))
 
 if toggles["DNS-over-HTTPS"]:
@@ -153,6 +155,125 @@ def buttoncolourer(k, v, name=None):
     coloured.save(colouredpath, format='PNG')
     return colouredpath
 
+def ensure_webchannel_js(target_dir):
+    js_path = os.path.join(target_dir, "qwebchannel.js")
+    # Only write it if it doesn't exist, or overwrite every time to stay updated
+    if not os.path.exists(js_path):
+        # This path is internal to the PySide6 binary
+        resource_file = QFile(":/qtwebchannel/qwebchannel.js")
+        if resource_file.open(QIODevice.OpenModeFlag.ReadOnly):
+            content = resource_file.readAll().data()
+            with open(js_path, "wb") as f:
+                f.write(content)
+            resource_file.close()
+
+class objectMasterBridge(QObject):
+    # Signal to push updates to JS (like a ticking clock or settings change)
+    dataUpdated = Signal(str, str) # (key, value)
+
+    # Signal to request a search from the html page
+    searchRequested = Signal(str)
+
+
+    #Placeholder signal to send back adjustments to the actionToggles.json file
+
+
+    def __init__(self):
+        super().__init__()
+
+    @Slot(str)
+    def receiveSearchQuery(self, query):
+        cQuery = query.strip()
+        if cQuery:
+            print("HTML Bridge received: " + cQuery)
+            self.searchRequested.emit(cQuery)
+
+    @Slot(str, result=str)
+    def getData(self, key):
+        #Generalised getter for JS to pull data
+        if key == "time":
+            timeFormat = (toggles["Time-Display"])[0]
+            timeCall = QDateTime.currentDateTime()
+            #Syntax: time display goes "hh:mm:ss AP". AP is whether to display AM/PM, lowercase hh means 12-hr, uppercase means 24-hr
+            return timeCall.toString(f"{timeFormat} AP") if (toggles["Time-Display"])[1] == True else timeCall.toString(f"{timeFormat}")
+
+        elif key == "date":
+            #Syntax: formatting [0] is one of 6 options - Global, US, ISO, Long-Form, Minimalist. Formatting is below but super complicated. Formatting [1] is true/false for year.
+            """
+            d: Day number with no leading zero (e.g 1)
+            dd: Day number with leading zero (e.g. 01)
+            ddd: Abbreviated localized day name (e.g. “Mon”)
+            dddd: Long localized day name (e.g. “Monday”)
+            M: Month number with no leading zero (e.g. 1)
+            MM:Month number with leading zero (e.g. 01)
+            MMM:Abbreviated localized month name (e.g. “Jan”)
+            MMMM:Long localized month name (e.g. “January”)
+            yy:Year as two digit number (e.g. 99)
+            yyyy: Year as four digit number (e.g. 1999). Can be a negative number for BCE years.
+            """
+
+            date_format, provide_year = toggles["Date-Display"]
+            dateCall = QDateTime.currentDateTime()
+
+            # Define base formats without year info
+            format_map = {
+                "Global": "dd/MM",
+                "US": "M/d",
+                "ISO": "MM-dd",      # We'll prepend yyyy- if needed
+                "Long-Form": "dddd, d MMMM",
+                "Minimalist": "dd MMM"
+            }
+
+            base = format_map.get(date_format, "dd/MM")
+
+            # Specific year-attachment logic per format
+            if provide_year:
+                if date_format == "ISO":
+                    base = f"yyyy-{base}"
+                elif date_format in ["Global", "US"]:
+                    base += "/yyyy"
+                else: # Long-Form and Minimalist
+                    base += " yyyy"
+
+            return dateCall.toString(base)
+        
+        elif key == "greeting":
+            if toggles["Greeting"] == True:
+                hourCall = int(QDateTime.currentDateTime().toString("HH")) #returns time in 24hr
+                
+                match hourCall:
+                    case hC if 4 <= hC < 12:
+                        return (f"Good Morning, " + toggles["Name"])
+                    case hC if 12 <= hC < 17:
+                        return (f"Good Afternoon, " + toggles["Name"])
+                    case hC if 17 <= hC < 21:
+                        return (f"Good Evening, " + toggles["Name"])
+                    case hC if (21 <= hC <= 23) or (0 <= hC < 4):
+                        return (f"Sleep Well, " + toggles["Name"])
+                    case _:
+                        return (f"Hello, " + toggles["Name"])
+            else:
+                return toggles["name"]
+        
+        elif key == "blur":
+            return str(f"{toggles["Blur"]}px")
+        
+        elif key == "BGimage":
+            return str(f"images/{toggles["Image-Url"]}")
+            
+        else:
+            return str(self.settings_data.get(key, "Error: Key not found"))
+
+    #potential system to use later for the settings menu
+    """ @Slot(str, str)
+    def updateData(self, key, value):
+        #Generalised setter for JS to save settings
+        print(f"Updating {key} to {value}")
+        self.settings_data[key] = value
+        self.dataUpdated.emit(key, value) """
+    
+
+
 class Browser(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -170,19 +291,35 @@ class Browser(QMainWindow):
         
         self.profile = QWebEngineProfile("PersistentUser", self)
         self.current_browser = QWebEngineView(self)
-        #self.profile.persistentCookiesPolicy() = True
+        #self.profile.persistentCookiesPolicy() = True #enable this another time
+
+        #Url Manager
+        self.UrlManager = UrlManager()
+        #Assign URL Scheme to page loaders
+        self.handler = UrlCustomSchemeManager()
+        self.profile.installUrlSchemeHandler(b"MidnightWatch", self.handler)
+        
+        #load webchannel data from internal system to ui folder
+        ensure_webchannel_js(os.path.join(srcSourceDir, "ui"))
 
         #settings system
         settings = self.profile.settings()
-        #Leave these true so javascript injections function properly
-        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-        settings.setAttribute(settings.WebAttribute.AllowRunningInsecureContent, True)
-        #Allows important sandboxing similar to Chrome. NEVER ENABLE THIS, IT LETS FILEPAGE JAVASCRIPT READ FILE HEADERS ON PC
-        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, False)
-        #Would be good but I need javascript actually working
-        settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
-        #Avoid giving instant clipboard access
+        #Set to false to enable sandboxing and security
+        #Stops local content from fetching outside content, would block execution scripts that install remote tools. Ties into QFlagged UrlScheme that my files all hook into that instead of directly running it
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
+        #Naturally avoid, baseline security
+        settings.setAttribute(settings.WebAttribute.AllowRunningInsecureContent, False)
+        #Avoids silent clipboard access, helps in privacy
         settings.setAttribute(settings.WebAttribute.JavascriptCanAccessClipboard, False)
+        #Blocks local running html that isn't authorised via the QFlagged UrlScheme
+        settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, False)
+
+        #Security enable settings
+        settings.setAttribute(settings.WebAttribute.XSSAuditingEnabled, True)
+
+        #Would be good to disable for efficiency and maximum security but I need javascript actually working - could be a toggleable system?
+        settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
+        
 
 
         #Data storage management - future plans to use this for history saving and long term cookie storage/removal choices for users
@@ -214,8 +351,6 @@ class Browser(QMainWindow):
         self.cookie_store.cookieAdded.connect(self.on_cookie_received)
         self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
 
-        self.home_path = f"{srcSourceDir}/ui/homepage.html"
-
 
         #Bar Management System
         self.container = QWidget()
@@ -238,7 +373,7 @@ class Browser(QMainWindow):
             PositionOrder = dict(json.load(f))
 
         #set components on top and bottom based on json settings
-        for element in PositionOrder["top_bar"]:
+        for element in PositionOrder["Top-Bar"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
@@ -252,11 +387,11 @@ class Browser(QMainWindow):
             "East": QTabWidget.TabPosition.East
         }
         #set tab alignment based on JSON setting
-        self.tabs.setTabPosition(mapping[PositionOrder["tab_position"]])
+        self.tabs.setTabPosition(mapping[PositionOrder["Tab-Position"]])
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout.addWidget(self.tabs, 1)
 
-        for element in PositionOrder["bottom_bar"]:
+        for element in PositionOrder["Bottom-Bar"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
@@ -269,6 +404,11 @@ class Browser(QMainWindow):
         self.setCentralWidget(self.container)
 
 
+        #Object bridging
+        self.objectBridge = objectMasterBridge()
+        self.objectBridge.searchRequested.connect(self.htmlSearch)
+        self.channel = QWebChannel(self.current_browser.page())
+        self.channel.registerObject("pyBridge", self.objectBridge)
 
     
 
@@ -289,10 +429,6 @@ class Browser(QMainWindow):
         self.engine_btn = None
         self.engine_btn, self.browserMenu = self.barManager.setup_engine_button(engines)
         self.current_browser.urlChanged.connect((lambda qurl, browser=self.current_browser: self.on_url_changed(qurl, browser)))
-
-        
-        #Url Manager
-        self.UrlManager = UrlManager()
 
 
 
@@ -371,7 +507,7 @@ class Browser(QMainWindow):
             pass
         
         #Add a default homepage window
-        self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+        self.add_new_tab()
         
         #Update all tabs to the correct appearance
         self.update_tab_icon(self.current_browser)
@@ -397,7 +533,6 @@ class Browser(QMainWindow):
                 browser.page().deleteLater()
 
         QApplication.quit()
-        
 
 
 
@@ -471,8 +606,8 @@ class Browser(QMainWindow):
     def go_back(self): self.current_browser.back()
     def reload_tab(self): self.current_browser.reload()
     def go_forward(self): self.current_browser.forward()
-    def go_home(self): self.current_browser.setUrl(QUrl.fromLocalFile(str(self.home_path)))
-    def new_tab(self): self.add_new_tab(QUrl.fromLocalFile(str(self.home_path)), "Home")
+    def go_home(self): self.current_browser.setUrl(QUrl("MidnightWatch://local/homepage.html"))
+    def new_tab(self): self.add_new_tab()
 
 
 
@@ -483,13 +618,14 @@ class Browser(QMainWindow):
 
     def add_new_tab(self, qurl=None, label="New Tab"):
         if qurl is None or isinstance(qurl, bool):
-            qurl = QUrl.fromLocalFile(f"{srcSourceDir}/ui/homepage.html")
-        
+            qurl = QUrl("MidnightWatch://local/homepage.html")
+            
         if isinstance(qurl, tuple):
             qurl = qurl[0]
         
         browser = QWebEngineView()
         new_page = QWebEnginePage(self.profile, browser)
+        new_page.setWebChannel(self.channel)
         browser.setPage(new_page)
         browser.setUrl(qurl)
         
@@ -508,17 +644,11 @@ class Browser(QMainWindow):
         browser.loadFinished.connect(lambda ok, b=browser: (self.barManager.stop_reload_animation(), self.on_load_finished(browser)))
         browser.titleChanged.connect(lambda title, browser=browser: self.update_tab_title(browser, title))
 
-        try:
-            if qurl.toString().endswith("homepage.html"):
-                self.url_bar.setText("Homepage")
-        except AttributeError:
-            if qurl.endswith("homepage.html"):
-                self.url_bar.setText("Homepage")
 
         self.update_tab_sizes()
         self.update_tab_icon(self.current_browser)
         #fix close button not disappearing issue for vertical tabs when a new one is created
-        if toggles["tab_position"] in ["East", "West"]:
+        if toggles["Tab-Position"] in ["East", "West"]:
             VerticalTabBar.update_close_buttons(self.tabs.tabBar())
         else:
             pass
@@ -567,12 +697,9 @@ class Browser(QMainWindow):
         current_browser = self.tabs.widget(index)
         if current_browser:
             self.current_browser = current_browser
-            if current_browser.url().toString().endswith("homepage.html"):
-                self.url_bar.setText("Homepage")
-            else:
-                raw_url = current_browser.url().toString()
-                clean_url = self.UrlManager.normalise_url(raw_url)
-                self.url_bar.setText(clean_url)
+            raw_url = current_browser.url().toString()
+            clean_url = self.UrlManager.normalise_url(raw_url)
+            self.url_bar.setText(clean_url)
             
             #update url bar buttons, especially bookmarks
             self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
@@ -619,7 +746,7 @@ class Browser(QMainWindow):
 
     def update_tab_sizes(self):
         #Guard clause to only run these updates if the user is on a horizontal tab system
-        if toggles["tab_position"] in ["East", "West"]:
+        if toggles["Tab-Position"] in ["East", "West"]:
             return
         tab_width = self.calculate_tab_width()
         tabbar = self.tabs.tabBar()
@@ -668,16 +795,26 @@ class Browser(QMainWindow):
         clean_url = self.UrlManager.normalise_url(raw_url)
         self.url_bar.setText(clean_url)
 
+    def htmlSearch(self, cQuery):
+        #convert to search link
+        search_url = engines[engine] + cQuery.replace(" ", "+")
+        #update and process system
+        self.current_browser.setUrl(QUrl(UrlManager.normalise_url(True, search_url)))
+        #update url bar to proper cleaned url text
+        raw_url = self.current_browser.url().toString()
+        clean_url = self.UrlManager.normalise_url(raw_url)
+        self.url_bar.setText(clean_url)
+        
+
+
+
     def on_load_finished(self, browser):
         #attempt to close extra boxes on blocked ads
         CosmeticBlocker.inject_css(browser)
         ScriptletBlocker.inject_scriptlets(browser)
         #extra case for final updates, catchall for url changes after loading a new page, finishing loading a different page, etc
         clean_url = self.UrlManager.normalise_url(self.current_browser.url().toString())
-        if clean_url.endswith("homepage.html"):
-            self.url_bar.setText("Homepage")
-        else:
-            self.url_bar.setText(clean_url)
+        self.url_bar.setText(clean_url)
         pass
 
     def update_url_bar_buttons(self, url, browser):
@@ -728,26 +865,6 @@ class Browser(QMainWindow):
             )
         
         self.url_bar.update()
-
-        
-
-
-        
-        #NOTE the below code doesn't work because it was designed for the extensions system and I've commented it out for safety.
-        #I'm keeping it around after the removal of the extensions system because it has some useful references for how I might 
-        #implement additions to the URL bar such as bookmarking a link or something else I might think of e.g. automatic webpage colour switching (dark reader emulation)
-        """ if is_webstore:
-            with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
-                Colourdata = json.load(f)
-                colour = Colourdata[self.selectedprofile]["ext_btn"]
-            buttoncolourer("extdown_btn", colour)
-
-            icon = get_normIcon("extdown")
-            self.reopen_button = self.url_bar.addAction(icon, QLineEdit.TrailingPosition)
-            self.reopen_button.setToolTip("Reopen Extension Prompt")
-            self.reopen_button.triggered.connect(lambda: self.triggerExtensionsPopup(browser, url))
-            self.url_bar.update() """
-    
 
 
 
@@ -1130,6 +1247,16 @@ class Browser(QMainWindow):
 '''Main execution loop'''
     
 if __name__ == "__main__":
+    scheme = QWebEngineUrlScheme(b"MidnightWatch")
+    scheme.setFlags(
+        QWebEngineUrlScheme.Flag.SecureScheme |
+        QWebEngineUrlScheme.Flag.LocalScheme |
+        QWebEngineUrlScheme.Flag.LocalAccessAllowed |
+        QWebEngineUrlScheme.Flag.CorsEnabled |
+        QWebEngineUrlScheme.Flag.FetchApiAllowed
+    )
+    QWebEngineUrlScheme.registerScheme(scheme)
+
     app = QApplication(sys.argv)
     window = Browser()
     window.show()
