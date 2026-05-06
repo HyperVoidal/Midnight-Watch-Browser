@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings Menu</title>
+    <style>
+        :root {
+            --background-colour: 45, 45, 60;
+        }
+        
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        .background-wrapper {
+            position: absolute;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgb(60, 60, 75);
+            z-index: -1;
+        }
+        .full-screen-settings {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+            z-index: 2;
+        }
+
+        .nav-container {
+            width: 120px;
+            background: rgb(60, 60, 75);
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            background-image: linear-gradient(to left, rgb(60, 60, 75), rgb(var(--background-colour))); /*swap left and right for alternative design*/
+        }
+
+        .settings-content {
+            flex: 1; /* Takes up remaining space */
+            padding: 40px;
+            color: white;
+            border-radius:12px;
+            z-index: 3;
+            /*border-radius: 20px; */
+            border-top-left-radius: 20px;
+            border-bottom-left-radius: 20px;
+            border-top-right-radius: 0px;
+            border-bottom-right-radius: 0px;
+            margin: 0px; /*alternative design at margin: 15px*/
+            border: 1px solid #3d3d3d;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow-y: auto;
+            min-height: 0;
+        }
+        
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 150px; /* Keeps controls from stretching too far */
+            margin-bottom: 20px;
+            padding: 8px 0;
+        }
+        
+
+        .nav-item { 
+            padding: 23px;
+            padding-right: 28px; /* Account for italics making text look slightly too far left */ 
+            cursor: pointer; 
+            color: #aaa; 
+            margin: 10px;
+            font-size: 1rem;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+            font-style: oblique;
+            text-align: center;
+            border-right: 1px solid #3d3d3d;
+            border-radius:12px;
+        }
+
+        .nav-item.active { 
+            background: rgba(80, 78, 78, 0.2);
+            color: white;
+            box-shadow: 0, 4px, 15px, rgba(63, 129, 255, 0.3);
+            font-style: oblique;
+            text-decoration: underline;
+
+        }
+
+        .tab-pane {
+            display: none;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        .title-spacer {
+            margin: 30px 0;
+        }
+
+        .text-spacer {
+            margin: 15px 0;
+        }
+
+        .separator-right {
+            border: 0;
+            height: 1px;
+            background-image: linear-gradient(to left, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0));
+            margin: 5px 0;
+            width: 100%;
+        }
+
+        .separator-left {
+            border: 0;
+            height: 1px;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0));
+            margin: 5px 0;
+            width: 50%;
+        }
+
+        .child-div {
+            display: flex;
+            flex: 1;
+            justify-content: flex-end;
+        }
+
+        .colour-group-font {
+            font-family: sans-serif;
+            font-size: 1.1rem;
+            color: white;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-weight: bolder;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 3rem;
+            color: white;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+
+        
+        h2 {
+            margin: 0;
+            font-size: 2rem;
+            color: white;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+
+        h3 {
+            margin: 0;
+            font-size: 0.5rem;
+            color: white;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+
+        h4 {
+            margin-top: 0;
+            font-size: 16;
+            color: white;
+            text-shadow: 1px 1px 5px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+
+        h5 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: white;
+            text-shadow: 4px 4px 20px rgba(0,0,0,0.7);
+            font-family: sans-serif;
+            text-decoration: underline;
+        }
+        label {
+            margin-top: 0;
+            padding-bottom: 10px;
+            font-size: 25;
+            font-weight: bold;
+            color: white;
+            text-shadow: 1px 1px 5px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+        }
+        text {
+            padding: 10px;
+            width: 300px;
+            border-radius: 20px;
+            border: none;
+            outline: none;
+        }
+
+        
+
+
+        /* Sliders */
+
+        .slider {
+            -webkit-appearance: none; 
+            appearance: none;         
+            
+            width: 100%;
+            background: transparent; 
+            outline: none;
+            margin: 0;
+            z-index: 4;
+        }
+        
+        /* Slider track defines the moveable area for the head */
+        .slider::-webkit-slider-runnable-track {
+            -webkit-appearance: none;
+            height: 18px;
+            background: linear-gradient(to right, #3f81ff var(--value, 50%), #444 var(--value, 50%));
+            border-radius: 5px;
+            border: 1px solid white;
+            cursor: pointer;
+            z-index: 7;
+        }   
+        
+        /* Click + Draggable slider head */
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #3f81ff;
+            border: 1px solid #444;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            margin-top: -1px;
+            z-index: 5;
+        }
+        
+        /* Outer box layer for the slider */
+        .slider-wrapper {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #tickmarks {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 5px;
+            margin-top: 5px;
+            color: #aaa;
+            font-size: 0.7rem;
+            font-family: sans-serif;
+        }
+
+
+        /* Checkbox System */
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 1rem;
+            color: white;
+            user-select: none;
+            gap: 15px;
+        }
+
+        /* Hide the browser's default checkbox */
+        .checkbox-container input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+            height: 0;
+            width: 0;
+        }
+
+        /* The custom box (The Track) */
+        .checkmark {
+            height: 20px;
+            width: 20px;
+            background-color: #444;
+            border: 1px solid white;
+            border-radius: 4px;
+            position: relative;
+            transition: 0.2s;
+        }
+
+        /* Background when checked (Accent) */
+        .checkbox-container input:checked ~ .checkmark {
+            background-color: #3f81ff;
+        }
+
+        /* The checkmark (The White "L" shape) */
+        .checkmark:after {
+            content: "";
+            position: absolute;
+            display: none;
+        }
+
+        /* Show checkmark when checked */
+        .custom-checkbox input:checked ~ .checkmark:after {
+            display: block;
+        }
+
+        /* Style the actual "L" indicator */
+        .checkbox-container .checkmark:after {
+            left: 6px;
+            top: 2px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        
+        /* Dropdown menu */
+        .dropdown-container {
+            position: relative;
+            width: 25%;
+            font-family: sans-serif;
+            font-style: normal;
+            flex: 2;
+        }
+
+        .dropdown-head {
+            background: #444;
+            color: white;
+            padding: 10px 15px;
+            border: 1px solid white;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .dropdown-list {
+            display: none; /*hide by default*/
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
+            background:rgb(60, 60, 75);
+            border: 1px solid white;
+            border-radius: 12px;
+            z-index: 100;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .dropdown-item {
+            padding: 10px 15px;
+            color: #aaa;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .dropdown-item:hover {
+            background: #504e4e;
+            color: white;
+        }
+
+        .dropdown-container.open .dropdown-list {
+            display: block;
+        }
+
+        .arrow-down {
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            display: inline-block;
+            padding: 3px;
+            transform: rotate(45deg);
+            transition: 0.3s;
+        }
+
+        .dropdown-container.open .arrow-down {
+            transform: rotate(-135deg)
+        }
+
+        
+        /* Input box */
+        
+        .input-wrapper {
+            position: relative;
+            width: 200px;
+        }
+
+        .custom-input {
+            width: 100%;
+            padding: 10px 15px;
+            background: #444;
+            color: white;
+            border: 1px solid white;
+            border-radius: 12px;
+            outline: none;
+            font-family: sans-serif;
+            text-shadow: 1px 1px 5px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        /* Change style when user clicks the box */
+        .custom-input:focus {
+            background: #504e4e; /* Lightens slightly */
+            border-color: #3f81ff;
+            box-shadow: 0 0 10px rgba(63, 129, 255, 0.4);
+        }
+
+        /* Placeholder text styling */
+        .custom-input::placeholder {
+            color: #888;
+            font-style: italic;
+            opacity: 0.7;
+            font-size: 15px;
+        }
+
+        
+        /* File input dialogue */
+
+        #bg-drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 480px;
+            font-family: sans-serif;
+            padding: 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        #bg-drop-area.highlight {
+            border-color: purple;
+        }
+
+        p {
+            margin-top: 0;
+        }
+
+        .bgDragDropForm {
+            margin-bottom: 10px;
+        }
+
+        #gallery {
+            margin-top: 10px;
+        }
+
+        #gallery img {
+            width: 150px;
+            margin-bottom: 10px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 10px;
+            background: #444;
+            cursor: pointer;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        .button:hover {
+            background: #504e4e;
+        }
+
+        #fileElem {
+            display: none;
+        }
+
+        /* RGB & Buttons */
+
+        input[type="color"] {
+            border: none;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            background: none;
+            border-radius: 5px;
+        }
+        .colour-group { 
+            display: flex; 
+            align-items: center; 
+            gap: 70px; 
+            width: 50%;
+            flex-direction: row;
+            justify-content: center;
+        }
+
+        .colour-group-spacer {
+            display: flex;
+            align-items: center;
+            flex-direction: column;
+            width: 50%;
+        }
+
+        .colour-group-mini-spacer {
+            display: flex; 
+            flex-direction: row;
+            align-items: center; 
+            gap: 40px;
+        }
+
+
+
+        /* Bar Drag and Drop Control */
+
+        .hierarchy-editor {
+            display: flex;
+            gap: 0px;
+            width: 50%
+        }
+
+        .bar-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+            font-size: 15px;
+            font-style: italic;
+        }
+
+        .drop-zone {
+            background: #444;
+            border: 1px dashed white;
+            border-radius: 8px;
+            min-height: 165px;
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+        }
+
+        .bar-item {
+            background: #504e4e;
+            border: 1px solid white;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: grab;
+            text-align: center;
+            font-family: sans-serif;
+            margin-bottom: 5px;
+            margin-top: 5px;
+        }
+
+        .bar-item:active { 
+            cursor: grabbing; 
+        }
+        
+        .dragging {
+            opacity: 0.4;
+        }
+
+        
+
+    </style>
+
+</head>
+<body>
+    <div class="background-wrapper">
+        <h2>Settings Menu</h2>
+    </div>
+        <div class="full-screen-settings">
+        <aside class="nav-container">
+            <div class="nav-item active" onclick="switchTab(this, 'general')">General</div>
+            <div class="nav-item" onclick="switchTab(this, 'themes')">Themes</div>
+            <div class="nav-item" onclick="switchTab(this, 'privacy')">Privacy</div>
+        </aside>
+
+        <main class="settings-content">
+
+
+            <div id="general", class="tab-pane active">
+                <h2>General</h2>
+                <div class="title-spacer"></div>
+
+                <div class="control-row">
+                    <label>Name</label>
+                    <div class="input-wrapper">
+                        <input type="text" class="custom-input" placeholder="Type here...">
+                        <span class="input-focus-bg"></span>
+                    </div>
+                </div>
+                
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+                
+                <div class="control-row">
+                    <label class="checkbox-container">
+                        <input type="checkbox" checked>
+                        <span class="checkmark"></span>
+                        Save Tabs on Browser Reload
+                    </label>
+                </div>
+
+                <div class="text-spacer"></div>
+
+                <div class="control-row">
+                    <label class="checkbox-container">
+                        <input type="checkbox" checked>
+                        <span class="checkmark"></span>
+                        Display Greeting
+                    </label>
+                </div>
+
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+                
+                <div class="control-row">
+                    <div class="dropdown-container" data-setting="Date Display">
+                        <label>Date Display</label>
+                        <div class="dropdown-head" onclick="toggleDropdown(this)">
+                            <span>Date Display</span>
+                            <i class="arrow-down"></i>
+                        </div>
+                        <div class="dropdown-list">
+                            <div class="dropdown-item" onclick="selectOption(this)">Global</div>
+                            <div class="dropdown-item" onclick="selectOption(this)">US</div>
+                            <div class="dropdown-item" onclick="selectOption(this)">ISO</div>
+                            <div class="dropdown-item" onclick="selectOption(this)">Long-Form</div>
+                            <div class="dropdown-item" onclick="selectOption(this)">Minimalist</div>
+                        </div>                  
+                    </div>
+                    <div class="text-spacer"></div>
+                    <label class="checkbox-container">
+                        <input type="checkbox" checked>
+                        <span class="checkmark"></span>
+                        Show Year
+                    </label>
+                </div>
+                            
+
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+
+                <div class="control-row">
+                    <label>Time Display</label>
+                    <div class="input-wrapper">
+                        <input type="text" class="custom-input" placeholder="HH:mm"> <!-- Need to actually fill this using js, pull current config from json file-->
+                        <span class="input-focus-bg"></span>
+                    </div>
+                </div>
+
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+
+                <!-- Tab Bar Position Controller-->
+                <div class="control-row">
+                    <div class="dropdown-container" data-setting="Tab Bar Pos">
+                        <label>Tab Bar Position</label>
+                        <div class="dropdown-head" onclick="toggleDropdown(this)">
+                            <span>Tab Bar Position</span>
+                            <i class="arrow-down"></i>
+                        </div>
+                        <div class="dropdown-list">
+                            <div class="dropdown-item" onclick="selectOption(this)">Top</div>
+                            <div class="dropdown-item" onclick="selectOption(this)">Bottom</div>
+                            <div class="dropdown-item" onclick="selectOption(this)">Vertical Left</div>
+                            <div class="dropdown-item" onclick="selectOption(this)">Vertical Right</div>
+                        </div>                  
+                    </div>
+                </div>
+
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+                
+                <div class="control-row">
+                    <h4>Bar Location Manager</h4>
+                    <div class="text-spacer"></div>
+                    <div class="hierarchy-editor">
+                        <!-- Top Bars -->
+                        <div class="bar-section">
+                            <label>Top Bars</label>
+                            <div class="drop-zone" id="top-stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="address-bar">Search</div>
+                            </div>
+                        </div>
+
+                        <!-- Bottom Bars -->
+                        <div class="bar-section">
+                            <label>Bottom Bars</label>
+                            <div class="drop-zone" id="bottom-stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="bookmarks-bar">Bookmarks</div>
+                            </div>
+                        </div>
+
+                        <!-- Hidden -->
+                        <div class="bar-section">
+                            <label>Hidden</label>
+                            <div class="drop-zone" id="hidden-stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="status-bar">Status Info</div> <!-- Potential Status Bar System, if I have time to add later-->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+
+                <div class="control-row">
+                    <label>Blur Control</label>
+                    <div class="slider-wrapper">
+                        <input type="range" value="300" min="0", max="500" step="1" class="slider" list="tickmarks" id="blur">
+                        
+                        <!-- Tick marks / Labels -->
+                        <datalist id="tickmarks">
+                            <option value="0" label="0%"></option>
+                            <option value="100" label="20%"></option>
+                            <option value="200" label="40%"></option>
+                            <option value="300" label="60%"></option>
+                            <option value="400" label="80%"></option>
+                            <option value="500" label="100%"></option>
+                        </datalist>
+
+                    </div>
+                </div>
+
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+                
+                <label>New Tab Background Image</label>
+                <div class="text-spacer"></div>
+                <div class="control-row">
+                    <div id="bg-drop-area">
+                        <form class="bgDragDropForm">
+                            <p>Drag and Drop or Click to Open Files</p>
+                            <input type="file" id="fileElem" accept="image/*" onchange="handleFiles(this.files)">
+                            <label class="button" for="fileElem">Select image...</label>
+                        </form>
+                        <div class='child-div' id="gallery"></div>
+                    </div>
+                </div>
+
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+
+                
+            </div>
+
+
+            <div id="themes" class="tab-pane">
+                <h2>Theme Control</h2>
+                <div class="title-spacer"></div>
+                <div class="control-row">
+
+                    <h5>Navigation Buttons</h5>
+                    <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>back_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputBACK">
+                                <span class="colour-group-font" id="hexValueBACK">#3f51b5</span>
+                            </div>
+                        </div>
+                        
+                        <div class="colour-group-spacer">
+                            <label>forward_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputFORWARD">
+                                <span class="colour-group-font" id="hexValueFORWARD">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>newtab_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputNEWTAB">
+                                <span class="colour-group-font" id="hexValueNEWTAB">#3f51b5</span>
+                            </div>
+                        </div>
+
+                        <div class="colour-group-spacer">
+                            <label>home_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputHOME">
+                                <span class="colour-group-font" id="hexValueHOME">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>reload_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputRELOAD">
+                                <span class="colour-group-font" id="hexValueRELOAD">#3f51b5</span>
+                            </div>
+                        </div>
+
+                        <div class="colour-group-spacer">
+                            <label>settings_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputSETTINGS">
+                                <span class="colour-group-font" id="hexValueSETTINGS">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+
+
+                    <h5>Dropdown Controllers</h5>
+                    <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>colourPalette_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputPALETTE">
+                                <span class="colour-group-font" id="hexValuePALETTE">#3f51b5</span>
+                            </div>
+                        </div>
+
+                        <div class="colour-group-spacer">
+                            <label>cookie_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputCOOKIE">
+                                <span class="colour-group-font" id="hexValueCOOKIE">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+
+
+                    <h5>Bar Controllers</h5>
+                    <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>url_bar</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputURLBAR">
+                                <span class="colour-group-font" id="hexValueURLBAR">#3f51b5</span>
+                            </div>
+                        </div>
+
+                        <div class="colour-group-spacer">
+                            <label>nav_bar</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputNAVBAR">
+                                <span class="colour-group-font" id="hexValueNAVBAR">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>tabs</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputTABS">
+                                <span class="colour-group-font" id="hexValueTABS">#3f51b5</span>
+                            </div>
+                        </div>
+
+                        <div class="colour-group-spacer">
+                            <label>tab_backer</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputBACKER">
+                                <span class="colour-group-font" id="hexValueBACKER">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>bookmarks_bar</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputBOOKBAR">
+                                <span class="colour-group-font" id="hexValueBOOKBAR">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+
+
+                    <h5>Misc</h5>
+                    <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+
+                    <div class="colour-group">
+                        <div class="colour-group-spacer">
+                            <label>bookmark_btn</label>
+                            <div class="colour-group-mini-spacer">
+                                <input type="color" value="#3f51b5" id="rgbInputBOOKMARK">
+                                <span class="colour-group-font" id="hexValueBOOKMARK">#3f51b5</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+            </div>
+
+
+            <div id="privacy" class="tab-pane">
+                <h2>Privacy</h2>
+                <div class="title-spacer"></div>
+                <div class="control-row">
+                    <label>Cookie Filter Sensitivity</label>
+                    <div class="slider-wrapper">
+                        <input type="range" min="0" max="2" value="1" step="1" class="slider" list="tickmarks" id="cookieFilterSens">
+                        
+                        <!-- Tick marks / Labels -->
+                        <datalist id="tickmarks">
+                            <option value="0" label="No Blocking"></option>
+                            <option value="1" label="Midground Blocking"></option>
+                            <option value="2" label="Extreme"></option>
+                        </datalist>
+
+                    </div>
+                </div>
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+                <div class="control-row">
+                    <label class="checkbox-container">
+                        <input type="checkbox" checked>
+                        <span class="checkmark"></span>
+                        DNS over HTTPS
+                    </label>
+                </div>
+                <div class="text-spacer"></div>
+                <div class="control-row">
+                    <label class="checkbox-container">
+                        <input type="checkbox" checked>
+                        <span class="checkmark"></span>
+                        Encrypted Client Hello
+                    </label>
+                </div>
+                <div class="text-spacer"></div>
+                <div class="control-row">
+                    <label class="checkbox-container">
+                        <input type="checkbox" checked>
+                        <span class="checkmark"></span>
+                        Automatic Cookie Action on Tab Close
+                    </label>
+                </div>
+                <div class="text-spacer"></div>
+                <hr class="separator-left">
+                <div class="text-spacer"></div>
+            </div>
+
+
+        </main>
+    </div>
+</body>
+
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        let bgDropArea = document.getElementById('bg-drop-area')
+
+        new QWebChannel(qt.webChannelTransport, (channel) => {
+            window.bridge = channel.objects.pyBridge;
+
+            const updateElements = () => {
+                //Background Colour
+                bridge.getData("bgColour", (bgColour) => {
+                    document.documentElement.style.setProperty("--background-colour", bgColour)
+                })
+                
+            
+            };
+        updateElements();
+        });
+        // Function to switch navigation tabs
+        function switchTab(el, tabId) {
+            // Update Sidebar UI
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            el.classList.add('active');
+
+            // Update Content Visibility
+            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        //This is entirely just for image uploads
+
+        function handleDrop(e) {
+            let dt = e.dataTransfer
+            let files = dt.files
+
+            handleFiles(files)
+        }
+
+        function preventDefaults (e) {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+
+        function highlight(e) {
+            bgDropArea.classList.add('highlight')
+        }
+
+        function unhighlight(e) {
+            bgDropArea.classList.remove('highlight')
+        }
+        
+        function handleFiles(files) {
+            const gallery = document.getElementById('gallery');
+            gallery.innerHTML = ''; // Remove all previous images
+
+            if (files.length > 0) {
+                const file = files[0];
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(file);
+                gallery.appendChild(img);
+                Array.from(files).forEach(uploadFile);
+            }
+        }   
+
+
+        function uploadFile(file) {
+            console.log(">:(") //this will just be linking back to the bridge system
+        }
+
+        function previewFile(file) {
+            let reader = new FileReader()
+            reader.readAsDataURL(file)
+            reader.onloadend = function() {
+                let img = document.createElement('img')
+                img.src = reader.result
+                document.getElementById('gallery').appendChild(img)
+            }
+        }
+
+        // Wrap listeners to ensure elements exist
+        window.onload = function() {
+            const colorPicker = document.getElementById('rgbInput');
+            const hexLabel = document.getElementById('hexValue');
+
+            if (colorPicker && hexLabel) {
+                colorPicker.addEventListener('input', (e) => {
+                    hexLabel.textContent = e.target.value.toUpperCase();
+                });
+            }
+
+            const sliders = document.querySelectorAll('.slider');
+            // Set initial values for all sliders on page load
+            sliders.forEach(slider => {
+                const setVal = () => {
+                    const val = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+                    slider.style.setProperty('--value', val + '%');
+                };
+                
+                // Update on move
+                slider.addEventListener('input', setVal);
+                setVal(); 
+            }); 
+
+            window.addEventListener('click', (e) => {
+                if (!e.target.closest('.dropdown-container')) {
+                    document.querySelectorAll('.dropdown-container').forEach(d => d.classList.remove('open'));
+                }
+            })
+
+            for (eventName of ['dragenter', 'dragover', 'dragleave', 'drop']) {
+                bgDropArea.addEventListener(eventName, preventDefaults, false)
+            }
+
+            for (eventName of ['dragenter', 'dragover']) {
+                bgDropArea.addEventListener(eventName, highlight, false)
+            }
+            
+            for (eventName of ['dragleave', 'drop']) {
+                bgDropArea.addEventListener(eventName, unhighlight, false)
+            }
+
+            if (bgDropArea) { //only trigger if bgDropArea exists!!
+                bgDropArea.addEventListener('drop', handleDrop, false)
+            }
+
+        };
+
+        function toggleDropdown(headerElement) {
+            const parent = headerElement.parentElement;
+
+            //Opening a dropdown should close all others
+            for (dropdown of document.querySelectorAll('.dropdown-container')) {
+                if (dropdown != parent) {
+                    dropdown.classList.remove('open');
+                }
+            }
+            parent.classList.toggle('open');
+        }
+
+        function selectOption(itemElement) {
+            const text = itemElement.textContent;
+            const parent = itemElement.closest('.dropdown-container')
+
+            parent.querySelector('.dropdown-head span').textContent = text;
+            parent.classList.remove('open');
+
+            //log changes. Try to pull settingType out for bridge changes and use data-setting defined in the dropdown-container class to locate which setting is being updated specifically
+            const settingType = parent.getAttribute('data-setting'); 
+            console.log(`Setting ${settingType} changed to ${text}`);
+        }
+
+        function allowDrop(tabDragDropElement) {
+            tabDragDropElement.preventDefault();
+        }
+
+        function drag(tabDragDropElement) {
+            tabDragDropElement.dataTransfer.setData("text", tabDragDropElement.target.id);
+            tabDragDropElement.target.classList.add('dragging');
+        }
+
+        function drop(tabDragDropElement) {
+            tabDragDropElement.preventDefault();
+            const id = tabDragDropElement.dataTransfer.getData("text");
+            const item = document.getElementById(id);
+            item.classList.remove('dragging');
+
+            const zone = tabDragDropElement.target.closest('.drop-zone');
+            if (zone) {
+                zone.appendChild(item);
+            }
+        }
+
+
+    </script>
+    
+</html>

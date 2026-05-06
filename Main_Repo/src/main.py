@@ -174,12 +174,13 @@ class objectMasterBridge(QObject):
     # Signal to request a search from the html page
     searchRequested = Signal(str)
 
-
     #Placeholder signal to send back adjustments to the actionToggles.json file
 
 
     def __init__(self):
         super().__init__()
+        with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+            self.colourData = dict(json.load(f))
 
     @Slot(str)
     def receiveSearchQuery(self, query):
@@ -198,7 +199,7 @@ class objectMasterBridge(QObject):
             return timeCall.toString(f"{timeFormat} AP") if (toggles["Time-Display"])[1] == True else timeCall.toString(f"{timeFormat}")
 
         elif key == "date":
-            #Syntax: formatting [0] is one of 6 options - Global, US, ISO, Long-Form, Minimalist. Formatting is below but super complicated. Formatting [1] is true/false for year.
+            #Syntax: formatting [0] is one of 5 options - Global, US, ISO, Long-Form, Minimalist. Formatting is below but super complicated. Formatting [1] is true/false for year.
             """
             d: Day number with no leading zero (e.g 1)
             dd: Day number with leading zero (e.g. 01)
@@ -219,7 +220,7 @@ class objectMasterBridge(QObject):
             format_map = {
                 "Global": "dd/MM",
                 "US": "M/d",
-                "ISO": "MM-dd",      # We'll prepend yyyy- if needed
+                "ISO": "MM-dd",  
                 "Long-Form": "dddd, d MMMM",
                 "Minimalist": "dd MMM"
             }
@@ -253,7 +254,7 @@ class objectMasterBridge(QObject):
                     case _:
                         return (f"Hello, " + toggles["Name"])
             else:
-                return toggles["name"]
+                return ""
         
         elif key == "blur":
             return str(f"{toggles["Blur"]}px")
@@ -262,7 +263,7 @@ class objectMasterBridge(QObject):
             return str(f"images/{toggles["Image-Url"]}")
             
         else:
-            return str(self.settings_data.get(key, "Error: Key not found"))
+            return f"Error: Key: {str(key)} not found"
 
     #potential system to use later for the settings menu
     """ @Slot(str, str)
@@ -332,6 +333,8 @@ class Browser(QMainWindow):
 
         self.profile.setCachePath(cache_path)
         self.profile.setPersistentStoragePath(profile_path)
+        self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
+        self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
 
 
 
@@ -361,7 +364,8 @@ class Browser(QMainWindow):
         self.barManager = BarManager(self, eColsStyle, eColsButton, srcSourceDir)
 
         self.tabs = self.barManager.setup_tabs()
-        self.tabs.tabCloseRequested.connect(self.close_tab)
+
+        self.tabs.tabCloseRequested.connect(lambda i: (self.close_tab(i), QTimer.singleShot(0, self.tabs.tabBar().update_hover_from_cursor)))
         self.tabs.currentChanged.connect(self.switch_tab)
 
         self.nav_bar = self.barManager.setup_navbar()
@@ -399,6 +403,8 @@ class Browser(QMainWindow):
                 print("Couldn't find mapping assignment for bottom bar element: ", element)
 
         self.url_bar = self.barManager.setup_url_bar()
+        #link mouse presses on the url bar to automatically highlight text
+        self.url_bar.mousePressEvent = self._url_bar_mouse_press
 
 
         self.setCentralWidget(self.container)
@@ -413,9 +419,7 @@ class Browser(QMainWindow):
     
 
         #Colour palette systems
-        with open (f'{srcSourceDir}/data/userData.json', "r") as f:
-            Udata = dict(json.load(f))
-        self.selectedprofile = (dict(Udata[self.user]))["ColourProfile"]
+        self.selectedprofile = toggles["Colour-Theme"]
         print(self.selectedprofile)
 
         with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
@@ -451,7 +455,7 @@ class Browser(QMainWindow):
         exit_action = QAction("&Exit", self)
         self.addAction(exit_action)
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
-        exit_action.triggered.connect(self.exit_app)
+        exit_action.triggered.connect(self.shutdown_Systems)
 
         #Close tab command
         tabclose_action = QAction("&Close &Tab", self)
@@ -512,19 +516,19 @@ class Browser(QMainWindow):
         #Update all tabs to the correct appearance
         self.update_tab_icon(self.current_browser)
 
-    def exit_app(self):
+    def shutdown_Systems(self):
         if saveTabsOnRestart:
             #save all urls to a json file for attempted re-opening on browser start
             savetabs = {}
             for tab in range (self.tabs.count()):
-                if "homepage.html" in self.tabs.widget(tab).url().toString():
-                    pass #skip new tab windows
+                if "midnightwatch://" in self.tabs.widget(tab).url().toString():
+                    pass #Skip custom url scheme pages
                 else:
                     savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
                     print(f"Saving: {str(self.tabs.tabText(tab))}")
 
             with open(f"{srcSourceDir}/data/bootupTabs.json", "w") as f:
-                json.dump(savetabs, f)
+                json.dump(savetabs, f, indent=4)
 
         # Clean up all remaining pages before closing to prevent profile release errors
         for tab_index in range(self.tabs.count()):
@@ -532,9 +536,13 @@ class Browser(QMainWindow):
             if browser and hasattr(browser, 'page') and browser.page():
                 browser.page().deleteLater()
 
+        #Clear HTTP cache to avoid potential clientside injection attacks
+        self.profile.clearHttpCacheCompleted.connect(self.exit_app)
+        self.profile.clearHttpCache()
+
+
+    def exit_app(self):
         QApplication.quit()
-
-
 
 
 
@@ -544,7 +552,7 @@ class Browser(QMainWindow):
 
     def closeEvent(self, event):
         if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
-            self.exit_app()
+            self.shutdown_Systems()
             event.accept()
         else:
             event.ignore()
@@ -559,6 +567,8 @@ class Browser(QMainWindow):
         if new_width != old_width:
             # Width changed - update tab sizes
             self.update_tab_sizes()
+
+        self.tabs.tabBar().update_hover_from_cursor()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -608,6 +618,7 @@ class Browser(QMainWindow):
     def go_forward(self): self.current_browser.forward()
     def go_home(self): self.current_browser.setUrl(QUrl("MidnightWatch://local/homepage.html"))
     def new_tab(self): self.add_new_tab()
+    def open_settings_menu(self): self.open_settings()
 
 
 
@@ -642,7 +653,7 @@ class Browser(QMainWindow):
         browser.urlChanged.connect(lambda qurl, browser=browser: self.update_tab_title(browser))
         browser.loadStarted.connect(lambda: self.barManager.start_reload_animation())
         browser.loadFinished.connect(lambda ok, b=browser: (self.barManager.stop_reload_animation(), self.on_load_finished(browser)))
-        browser.titleChanged.connect(lambda title, browser=browser: self.update_tab_title(browser, title))
+        browser.titleChanged.connect(lambda title, browser=browser, i=i: (self.update_tab_title(browser, title), self.tabs.setTabToolTip(i, f"{title}\n{self.UrlManager.normalise_url(browser.url().toString())}")))
 
 
         self.update_tab_sizes()
@@ -652,6 +663,7 @@ class Browser(QMainWindow):
             VerticalTabBar.update_close_buttons(self.tabs.tabBar())
         else:
             pass
+        QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
         return browser
     
     def on_url_changed(self, qurl, browser):
@@ -692,6 +704,7 @@ class Browser(QMainWindow):
             self.close()
 
         self.update_tab_sizes()
+        QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
 
     def switch_tab(self, index):
         current_browser = self.tabs.widget(index)
@@ -703,6 +716,7 @@ class Browser(QMainWindow):
             
             #update url bar buttons, especially bookmarks
             self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
+            QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
             
 
     def update_tab_title(self, browser, title=None):
@@ -721,7 +735,7 @@ class Browser(QMainWindow):
             if len(title) > 60:
                 title = title[:57] + "..."
             
-            if title.endswith('homepage.html'):
+            if title == "midnightwatch://local/homepage.html":
                 title = 'Homepage'
 
             self.tabs.setTabText(i, title)
@@ -749,6 +763,7 @@ class Browser(QMainWindow):
         if toggles["Tab-Position"] in ["East", "West"]:
             return
         tab_width = self.calculate_tab_width()
+        print('tst')
         tabbar = self.tabs.tabBar()
         current_style = tabbar.styleSheet()
         
@@ -765,7 +780,7 @@ class Browser(QMainWindow):
         
         tabbar.setStyleSheet(final_style)
 
-    '''URL Handling'''
+    '''URL + URL Bar Handling'''
 
     def load_url(self, qurl=None, label=None):
         if qurl is not None:
@@ -866,6 +881,21 @@ class Browser(QMainWindow):
         
         self.url_bar.update()
 
+    def _url_bar_mouse_press(self, event):
+        if not self.url_bar.hasFocus():
+            self.url_bar.selectAll()
+        super(QLineEdit, self.url_bar).mousePressEvent(event)
+    
+    def _url_bar_focus_in(self, event):
+        # Only clear if it's an internal page (your scheme)
+        text = self.url_bar.text()
+
+        if "midnightwatch://" in text:
+            self.url_bar.clear()
+
+        self.url_bar.selectAll()
+        super(QLineEdit, self.url_bar).focusInEvent(event)
+
 
 
     '''Search Engine Management'''
@@ -887,7 +917,7 @@ class Browser(QMainWindow):
                     engineData[key]["active"] = False
             engineData[self.engine]["active"] = True
             with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
-                json.dump(engineData, f)
+                json.dump(engineData, f, indent=4)
 
 
     '''Bookmarks System'''
@@ -930,7 +960,7 @@ class Browser(QMainWindow):
         del data[id]
 
         with open(f"{srcSourceDir}/data/bookmarks.json", "w") as f:
-            json.dump(data, f)
+            json.dump(data, f, indent=4)
         
         self.barManager.refresh_bookmarksbar()
         self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
@@ -938,7 +968,10 @@ class Browser(QMainWindow):
     
 
 
-
+    '''Settings Menu System'''
+    def open_settings(self):
+        self.add_new_tab(QUrl("MidnightWatch://local/settings.html"))
+        pass
 
     '''Colour Theme Management'''
     
@@ -956,12 +989,11 @@ class Browser(QMainWindow):
         #print(datalist)
 
         #adjust user profile colour selection
-        with open (f"{srcSourceDir}/data/userData.json", "r") as f:
-            dataedit = json.load(f)
-        (dict(dataedit["mainUser"]))["ColourProfile"] = profile
-        dataedit["mainUser"]["ColourProfile"] = profile
-        with open (f"{srcSourceDir}/data/userData.json", "w") as f:
-            json.dump(dataedit, f)
+        with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
+            dataedit = dict(json.load(f))
+        dataedit["Colour-Theme"] = str(profile)
+        with open (f"{srcSourceDir}/data/actionToggles.json", "w") as f:
+            json.dump(dataedit, f, indent=4)
             
 
         #recolour icons
@@ -1094,7 +1126,7 @@ class Browser(QMainWindow):
                     self.bookmarks_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
 
             else:
-                print(f"other: {k}")
+                #print(f"other: {k}")
                 pass
             
             self.update_tab_sizes()

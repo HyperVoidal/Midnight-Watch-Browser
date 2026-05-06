@@ -4,13 +4,24 @@
     "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny On Leave": 0,
     "Save-Tabs-On-Restart": 0,
-    "Tab-Position": "North",
-    "Top-Bar": ["nav_bar"],
-    "Bottom-Bar": ["bookmarks_bar"],
-    "Time-Display": ["HH:mm", false],
-    "Date-Display": ["ISO", true],
+    "Tab-Position": "East",
+    "Top-Bar": [
+        "nav_bar"
+    ],
+    "Bottom-Bar": [
+        "bookmarks_bar"
+    ],
+    "Time-Display": [
+        "HH:mm",
+        false
+    ],
+    "Date-Display": [
+        "ISO",
+        true
+    ],
     "Name": "MidnightGuard",
     "Greeting": true,
     "Blur": 10,
-    "Image-Url": "MainImageBackground.png"
+    "Image-Url": "MainImageBackground.png",
+    "Colour-Theme": "Secured Blue"
 }

@@ -65,10 +65,6 @@ RESOURCE_MAP = {
     QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMedia: "media",
 }
 
-# engine_bridge.py
-
-# engine_bridge.py
-
 def get_cosmetic_filters(url: str):
     try:
         # Get the resources object for the specific URL

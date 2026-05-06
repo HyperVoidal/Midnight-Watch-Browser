@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import requests
-from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap
+from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt
 from PySide6.QtWidgets import QTabWidget
@@ -35,6 +35,7 @@ class BarManager:
     def setup_url_bar(self):
         self.url_bar = QLineEdit()
         self.url_bar.returnPressed.connect(self.parent.load_url)
+        self.url_bar.focusInEvent = self.parent._url_bar_focus_in
         self.parent.nav_bar.addWidget(self.url_bar)
         self.eColsStyle.append("url_bar")
         return self.url_bar
@@ -44,21 +45,30 @@ class BarManager:
         if self.actionToggles["Tab-Position"] in ["North", "South"]:
             self.tabs = QTabWidget()
             self.tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
+            self.tabs.tabBar().setExpanding(True)
 
         elif self.actionToggles["Tab-Position"] in ["East", "West"]:
             self.tabs = QTabWidget()
             self.tabs.setTabBar(VerticalTabBar())
+            self.tabs.tabBar().setExpanding(False)
+            self.tabs.tabBar().setElideMode(Qt.ElideNone)
+
         else:
             print("tab position loading error, defaulting to north")
             self.tabs = QTabWidget()
             self.tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
+            self.tabs.tabBar().setExpanding(True)
 
         self.eColsStyle.append("tabs")
         self.eColsStyle.append("tab_backer")
         self.tabs.setTabsClosable(True)
         self.tabs.setDocumentMode(True)
-        self.tabs.tabBar().setStyleSheet("QTabBar::tab { height: 30px; width: 200px; padding-left: 5px; padding-right: 5px; }")
-        self.tabs.tabBar().setExpanding(True)
+        self.tabs.tabBar().setStyleSheet("""QTabBar::tab {
+                                                height: 35px;
+                                                width: 200px;
+                                            }
+                                            """)
+                                         
         self.tabs.tabBar().setUsesScrollButtons(True)
         return self.tabs
     
@@ -76,6 +86,7 @@ class BarManager:
         self.ButtonConstructor("forward_btn", "Forward", "forward", "go_forward")
         self.ButtonConstructor("home_btn", "Home", "home", "go_home")
         self.ButtonConstructor("newtab_btn", "New Tab", "newtab", "new_tab")
+        self.ButtonConstructor("settings_btn", "Settings", "settings", "open_settings_menu")
 
         #reload animation components
         self.rotation_angle = 0
@@ -463,6 +474,13 @@ class VerticalTabBar(QTabBar):
         self.setMouseTracking(True)
         self.hovered_index = -1
         self.update_close_buttons()
+        self.update_hover_from_cursor()
+        self.currentChanged.connect(lambda _: self.update_hover_from_cursor())
+        self.tabMoved.connect(lambda *_: self.update_hover_from_cursor())
+        QTimer.singleShot(0, self.hideStarterTabClose)
+        self.hover_timer = QTimer(self)
+        self.hover_timer.timeout.connect(self.update_hover_from_cursor)
+        self.hover_timer.start(16)
 
     def tabSizeHint(self, index):
         return QSize(200, 35) 
@@ -481,20 +499,79 @@ class VerticalTabBar(QTabBar):
         self.update()
         super().leaveEvent(event)
 
+    def update_hover_from_cursor(self):
+        pos = self.mapFromGlobal(QCursor.pos())
+
+        if not self.rect().contains(pos):
+            new_hover = -1
+        else:
+            new_hover = self.tabAt(pos)
+
+        if new_hover != self.hovered_index:
+            self.hovered_index = new_hover
+            self.update_close_buttons()
+            self.update()
+
     def update_close_buttons(self):
         for i in range(self.count()):
-            # Grab the actual widget QTabBar uses for the close button
-            btn = self.tabButton(i, QTabBar.ButtonPosition.RightSide)
+            btn = self.tabButton(i, QTabBar.RightSide)
+
             if btn:
+                btn.move(
+                    self.tabRect(i).right() - btn.width() - 5,
+                    self.tabRect(i).center().y() - btn.height() // 2
+                )
+
                 is_hovered = (i == self.hovered_index)
-                is_active = (i == self.currentIndex())
-                btn.setVisible(is_hovered or is_active)
+                btn.setVisible(is_hovered)
+
+    def hideStarterTabClose(self):
+        for i in range(self.count()):
+            btn = self.tabButton(i, QTabBar.RightSide)
+            if btn:
+                btn.hide()
 
     def paintEvent(self, event):
         painter = QStylePainter(self)
-        option = QStyleOptionTab()
 
         for i in range(self.count()):
+            option = QStyleOptionTab()
             self.initStyleOption(option, i)
-            option.shape = QTabBar.Shape.RoundedNorth
-            painter.drawControl(QStyle.ControlElement.CE_TabBarTab, option)
+
+            text = option.text
+            icon = self.tabIcon(i)
+
+            # Remove both so Qt doesn't draw them
+            option.text = ""
+            option.icon = QIcon()
+
+            # Draw tab background + state
+            painter.drawControl(QStyle.CE_TabBarTab, option)
+
+            rect = self.tabRect(i)
+
+            # --- ICON ---
+            icon_size = QSize(16, 16)
+            icon_x = rect.left() + 8
+            icon_y = rect.center().y() - icon_size.height() // 2
+
+            if not icon.isNull():
+                painter.drawPixmap(
+                    icon_x,
+                    icon_y,
+                    icon.pixmap(icon_size)
+                )
+
+            # --- TEXT ---
+            text_rect = QRect(
+                icon_x + icon_size.width() +6,
+                rect.top(),
+                rect.width() - (icon_size.width() + 10),
+                rect.height()
+            )
+
+            painter.drawText(
+                text_rect,
+                Qt.AlignVCenter | Qt.AlignLeft,
+                text
+            )
