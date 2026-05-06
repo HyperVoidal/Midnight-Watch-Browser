@@ -361,7 +361,7 @@ class Browser(QMainWindow):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
-        self.barManager = BarManager(self, eColsStyle, eColsButton, srcSourceDir)
+        self.barManager = BarManager(self, eColsStyle, eColsButton)
 
         self.tabs = self.barManager.setup_tabs()
 
@@ -405,7 +405,6 @@ class Browser(QMainWindow):
         self.url_bar = self.barManager.setup_url_bar()
         #link mouse presses on the url bar to automatically highlight text
         self.url_bar.mousePressEvent = self._url_bar_mouse_press
-
 
         self.setCentralWidget(self.container)
 
@@ -567,15 +566,16 @@ class Browser(QMainWindow):
         if new_width != old_width:
             # Width changed - update tab sizes
             self.update_tab_sizes()
-
-        self.tabs.tabBar().update_hover_from_cursor()
+        
+        if toggles["Tab-Position"] in ["East", "West"]:
+            self.tabs.tabBar().update_hover_from_cursor()
 
     def showEvent(self, event):
         super().showEvent(event)
         if not hasattr(self, '_tabs_sized'):
             self.update_tab_sizes()
             self._tabs_sized = True
-            
+                
 
 
 
@@ -658,12 +658,12 @@ class Browser(QMainWindow):
 
         self.update_tab_sizes()
         self.update_tab_icon(self.current_browser)
-        #fix close button not disappearing issue for vertical tabs when a new one is created
+        #Update tab apperances for vertical-specific adjustments
         if toggles["Tab-Position"] in ["East", "West"]:
             VerticalTabBar.update_close_buttons(self.tabs.tabBar())
+            QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
         else:
             pass
-        QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
         return browser
     
     def on_url_changed(self, qurl, browser):
@@ -704,7 +704,9 @@ class Browser(QMainWindow):
             self.close()
 
         self.update_tab_sizes()
-        QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
+        #Vertical tab specific updates
+        if toggles["Tab-Position"] in ["East", "West"]:
+            QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
 
     def switch_tab(self, index):
         current_browser = self.tabs.widget(index)
@@ -716,7 +718,9 @@ class Browser(QMainWindow):
             
             #update url bar buttons, especially bookmarks
             self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
-            QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
+            #Vertical tab specific updates
+            if toggles["Tab-Position"] in ["East", "West"]:
+                QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
             
 
     def update_tab_title(self, browser, title=None):
@@ -763,7 +767,6 @@ class Browser(QMainWindow):
         if toggles["Tab-Position"] in ["East", "West"]:
             return
         tab_width = self.calculate_tab_width()
-        print('tst')
         tabbar = self.tabs.tabBar()
         current_style = tabbar.styleSheet()
         
@@ -1051,6 +1054,11 @@ class Browser(QMainWindow):
                         self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
                 #select file from system and use PIL to change based on colour v, then s
                 pass
+                
+                if k == "pinTabs_btn":
+                    pinTabs_btn_col = buttoncolourer("pinTabs", v, "pinTabs")
+                    self.tabs.tabBar().pin_btn.setIcon(QIcon(str(pinTabs_btn_col)))
+                    self.tabs.tabBar().update_pin_icon()
 
             #recolour other elements
             elif k in eColsStyle:
@@ -1125,6 +1133,7 @@ class Browser(QMainWindow):
                     text_rgb_str = f"rgb({self.contrast_qcolor.red()}, {self.contrast_qcolor.green()}, {self.contrast_qcolor.blue()})"
                     self.bookmarks_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
 
+                
             else:
                 #print(f"other: {k}")
                 pass

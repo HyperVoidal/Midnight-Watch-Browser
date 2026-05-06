@@ -13,7 +13,8 @@
         "tabs": "(15, 20, 45)",
         "nav_bar": "(25, 45, 110)",
         "tab_backer": "(25, 45, 110)",
-        "bookmarks_bar": "(25, 45, 110)"
+        "bookmarks_bar": "(25, 45, 110)",
+        "pinTabs_btn": "(255, 200, 65)"
         
     },
     "Pastel Breeze": { 
@@ -30,7 +31,8 @@
         "tabs": "(235, 245, 250)",
         "nav_bar": "(255, 190, 190)",
         "tab_backer": "(255, 190, 190)",
-        "bookmarks_bar": "(255, 190, 190)"
+        "bookmarks_bar": "(255, 190, 190)",
+        "pinTabs_btn": "(205, 186, 159)"
 
     },
     "Cyber Lime": { 
@@ -47,7 +49,8 @@
         "tabs": "(20, 45, 20)",
         "nav_bar": "(200, 255, 200)",
         "tab_backer": "(200, 255, 200)",
-        "bookmarks_bar": "(200, 255, 200)"
+        "bookmarks_bar": "(200, 255, 200)",
+        "pinTabs_btn": "(170, 235, 0)"
 
     }, 
     "Mint": {
@@ -64,7 +67,8 @@
         "tabs": "(20, 40, 30)",
         "nav_bar": "(10, 60, 20)",
         "tab_backer": "(10, 60, 20)",
-        "bookmarks_bar": "(10, 60, 20)"
+        "bookmarks_bar": "(10, 60, 20)",
+        "pinTabs_btn": "(120, 235, 185)"
     },
     "Solar": {
         "back_btn": "(255, 207, 72)",
@@ -80,7 +84,8 @@
         "tabs": "(60, 20, 20)",
         "nav_bar": "(100, 30, 30)",
         "tab_backer": "(100, 30, 30)",
-        "bookmarks_bar": "(100, 30, 30)"
+        "bookmarks_bar": "(100, 30, 30)",
+        "pinTabs_btn": "(255, 153, 0)"
     },
     "Coral": {
         "back_btn": "(255, 111, 97)",
@@ -96,7 +101,8 @@
         "tabs": "(50, 20, 15)",
         "nav_bar": "(75, 20, 15)",
         "tab_backer": "(75, 20, 15)",
-        "bookmarks_bar": "(75, 20, 15)"
+        "bookmarks_bar": "(75, 20, 15)",
+        "pinTabs_btn": "(255, 176, 148)"
     }, 
     "Simple Dark Mode": { 
         "back_btn": "(255, 255, 255)", 
@@ -112,7 +118,8 @@
         "tabs": "(25, 25, 25)",
         "nav_bar": "(70, 70, 70)",
         "tab_backer": "(70, 70, 70)",
-        "bookmarks_bar": "(70, 70, 70)"
+        "bookmarks_bar": "(70, 70, 70)",
+        "pinTabs_btn": "(255, 255, 255)"
 
     },
     "Simple Light Mode": { 
@@ -129,7 +136,8 @@
         "tabs": "(240, 240, 240)",
         "nav_bar": "(255, 255, 255)",
         "tab_backer": "(255, 255, 255)",
-        "bookmarks_bar": "(255, 255, 255)"
+        "bookmarks_bar": "(255, 255, 255)",
+        "pinTabs_btn": "(128, 128, 128)"
 
     }
 }

@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 import requests
-from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor
+from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QTabBar, QStylePainter, QStyleOptionTab, QStyle
 from PySide6.QtCore import QSize
@@ -15,6 +15,12 @@ from cookieManager import CookieManager
 
 icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
 icon_cache_dir.mkdir(exist_ok=True)
+
+srcSourceDir =  Path(__file__).parent
+
+with open (srcSourceDir / "data/actionToggles.json", "r") as f:
+            actionToggles = json.load(f)
+
 def get_normIcon(name):
     icon_path = icon_cache_dir / f"{name}"
 
@@ -22,14 +28,12 @@ def get_normIcon(name):
 
 class BarManager:
 
-    def __init__(self, parent, eColsStyle, eColsButton, srcSourceDir):
+    def __init__(self, parent, eColsStyle, eColsButton):
         self.parent = parent
         self.eColsStyle = eColsStyle
         self.eColsButton = eColsButton
-        self.srcSourceDir = srcSourceDir
 
-        with open (self.srcSourceDir / "data/actionToggles.json", "r") as f:
-            self.actionToggles = json.load(f)
+        
         
 
     def setup_url_bar(self):
@@ -42,16 +46,18 @@ class BarManager:
 
 
     def setup_tabs(self):
-        if self.actionToggles["Tab-Position"] in ["North", "South"]:
+        if actionToggles["Tab-Position"] in ["North", "South"]:
             self.tabs = QTabWidget()
             self.tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
             self.tabs.tabBar().setExpanding(True)
 
-        elif self.actionToggles["Tab-Position"] in ["East", "West"]:
+        elif actionToggles["Tab-Position"] in ["East", "West"]:
             self.tabs = QTabWidget()
             self.tabs.setTabBar(VerticalTabBar())
             self.tabs.tabBar().setExpanding(False)
             self.tabs.tabBar().setElideMode(Qt.ElideNone)
+            self.eColsButton.append("pinTabs_btn")
+
 
         else:
             print("tab position loading error, defaulting to north")
@@ -106,7 +112,7 @@ class BarManager:
         self.eColsButton.append("bookmarks_btn")
 
         try:
-            with open (f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
+            with open (f"{srcSourceDir}/data/bookmarks.json", "r") as f:
                 bookmarkData = dict(json.load(f))
             
             for bid, data in bookmarkData.items():
@@ -144,7 +150,7 @@ class BarManager:
     def show_bookmark_menu(self, button, bid, pos):
         menu = QMenu()
 
-        with open(f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
+        with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
             data = json.load(f)
 
         bookmark = data[bid]
@@ -165,7 +171,7 @@ class BarManager:
             if new_name:
                 data[bid]["name"] = new_name
 
-                with open(f"{self.srcSourceDir}/data/bookmarks.json", "w") as f:
+                with open(f"{srcSourceDir}/data/bookmarks.json", "w") as f:
                     json.dump(data, f, indent=4)
 
                 self.refresh_bookmarksbar()
@@ -179,7 +185,7 @@ class BarManager:
     def refresh_bookmarksbar(self):
         self.bookmarks_bar.clear()
         try:
-            with open(f"{self.srcSourceDir}/data/bookmarks.json", "r") as f:
+            with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
                 bookmarkData = json.load(f)
 
             for bid, data in bookmarkData.items():
@@ -482,22 +488,123 @@ class VerticalTabBar(QTabBar):
         self.hover_timer.timeout.connect(self.update_hover_from_cursor)
         self.hover_timer.start(16)
 
-    def tabSizeHint(self, index):
-        return QSize(200, 35) 
-    
-    def mouseMoveEvent(self, event):
-        # Find which tab the mouse is currently over
-        new_hover = self.tabAt(event.position().toPoint())
-        if new_hover != self.hovered_index:
-            self.hovered_index = new_hover
-            self.update_close_buttons()
-            self.update() # Trigger a repaint
-        super().mouseMoveEvent(event)
-    
+        #Compact mode systems
+        self.autoCompact = True
+        self.compact_mode = True
+        self.expanded_width = 200
+        self.collapsed_width = 48
+
+        self.width_anim = QPropertyAnimation(self, b"minimumWidth")
+        self.width_anim.setDuration(300)
+        self.width_anim.setEasingCurve(QEasingCurve.OutQuint)
+        self.setMinimumWidth(self.collapsed_width)
+        self.setMaximumWidth(self.expanded_width)
+
+        self.compact_timer = QTimer(self)
+        self.compact_timer.setSingleShot(True)
+        self.compact_timer.timeout.connect(lambda: (self.set_compact_mode(True), self.update_close_buttons()))
+
+        self.width_anim.valueChanged.connect(lambda v: self.setMaximumWidth(v) if self.compact_mode else None)
+
+        #Toggle Mode Pin Button
+        self.pin_btn = QPushButton(self)
+        self.pin_btn.setCheckable(True)
+        self.pin_btn.setToolTip("Pin Tab Bar")
+        self.pin_btn.clicked.connect(self.toggle_pin)
+        self.pin_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: none;
+                outline: none;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+                border-radius: 5px; 
+            }
+        """)
+
+        self.default_pin_path = f"{srcSourceDir}/ui/icon_cache/pinTabs.png"
+        self.pin_btn.setIconSize(QSize(24, 24))
+
+    def toggle_pin(self, checked):
+        self.autoCompact = not checked
+        if checked:
+            self.compact_timer.stop()
+            self.set_compact_mode(False)
+        else:
+            if not self.rect().contains(self.mapFromGlobal(QCursor.pos())):
+                self.compact_timer.start(500)
+                
+        self.update_pin_icon() # This handles the rotation logic
+
+    def update_pin_icon(self):
+        size = self.pin_btn.iconSize()
+        if size.width() <= 0: size = QSize(24, 24)
+        pixmap = QPixmap(self.default_pin_path).scaled(size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        
+        
+        if pixmap.isNull():
+            print(f"Error: Could not load icon at {self.default_pin_path}")
+            return
+        
+        if not self.autoCompact:
+            rotated = QPixmap(pixmap.size())
+            rotated.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(rotated)
+            if painter.isActive() or painter.begin(rotated):
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+                painter.translate(rotated.width() / 2, rotated.height() / 2)
+                painter.rotate(-45)
+                painter.drawPixmap(-pixmap.width() / 2, -pixmap.height() / 2, pixmap)
+                painter.end()
+                pixmap = rotated
+
+        self.pin_btn.setIcon(QIcon(pixmap))
+        self.pin_btn.setIconSize(QSize(20, 20)) # Slightly smaller than the 30px button
+
+    def update_pin_button_pos(self):
+        btn_size = 30
+        x = (self.width() - btn_size) // 2
+        y = self.height() - btn_size - 5  # 5px padding from bottom
+        self.pin_btn.setGeometry(x, y, btn_size, btn_size)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_pin_button_pos()
+
+    def enterEvent(self, event):
+        if self.autoCompact:
+            self.compact_timer.stop()
+            self.set_compact_mode(False)
+        super().enterEvent(event)
+
     def leaveEvent(self, event):
-        self.update_close_buttons()
-        self.update()
+        if self.autoCompact:
+            self.compact_timer.start(500)
         super().leaveEvent(event)
+
+
+
+    def tabSizeHint(self, index):
+        # This makes the tabs follow the animation frame-by-frame
+        return QSize(self.width(), 35) 
+
+    def set_compact_mode(self, enabled: bool):
+        if self.compact_mode == enabled:
+            return
+        self.compact_mode = enabled
+        
+        target = self.collapsed_width if enabled else self.expanded_width
+        
+        self.width_anim.stop()
+        self.width_anim.setStartValue(self.width())
+        self.width_anim.setEndValue(target)
+        
+        # Force the maximum width to expand so the minimum animation isn't blocked
+        if not enabled: 
+            self.setMaximumWidth(self.expanded_width)
+        
+        self.width_anim.start()
 
     def update_hover_from_cursor(self):
         pos = self.mapFromGlobal(QCursor.pos())
@@ -552,7 +659,10 @@ class VerticalTabBar(QTabBar):
 
             # --- ICON ---
             icon_size = QSize(16, 16)
-            icon_x = rect.left() + 8
+            if self.compact_mode:
+                icon_x = rect.center().x() - icon_size.width() // 2
+            else:
+                icon_x = rect.left() + 8
             icon_y = rect.center().y() - icon_size.height() // 2
 
             if not icon.isNull():
@@ -563,15 +673,16 @@ class VerticalTabBar(QTabBar):
                 )
 
             # --- TEXT ---
-            text_rect = QRect(
-                icon_x + icon_size.width() +6,
-                rect.top(),
-                rect.width() - (icon_size.width() + 10),
-                rect.height()
-            )
+            if self.width() > self.collapsed_width + 20: 
+                text_rect = QRect(
+                    icon_x + icon_size.width() +6,
+                    rect.top(),
+                    rect.width() - (icon_size.width() + 10),
+                    rect.height()
+                )
 
-            painter.drawText(
-                text_rect,
-                Qt.AlignVCenter | Qt.AlignLeft,
-                text
-            )
+                painter.drawText(
+                    text_rect,
+                    Qt.AlignVCenter | Qt.AlignLeft,
+                    text
+                )
