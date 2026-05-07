@@ -716,7 +716,7 @@
                 <div class="control-row">
                     <label>Blur Control</label>
                     <div class="slider-wrapper">
-                        <input type="range" value="300" min="0", max="500" step="1" class="slider" list="tickmarks" id="blur">
+                        <input type="range" min="0", max="500" step="1" class="slider" list="tickmarks" id="blur-slider">
                         
                         <!-- Tick marks / Labels -->
                         <datalist id="tickmarks">
@@ -1000,19 +1000,6 @@
     <script>
         let bgDropArea = document.getElementById('bg-drop-area')
 
-        new QWebChannel(qt.webChannelTransport, (channel) => {
-            window.bridge = channel.objects.pyBridge;
-
-            const updateElements = () => {
-                //Background Colour
-                bridge.getData("bgColour", (bgColour) => {
-                    document.documentElement.style.setProperty("--background-colour", bgColour)
-                })
-                
-            
-            };
-        updateElements();
-        });
         // Function to switch navigation tabs
         function switchTab(el, tabId) {
             // Update Sidebar UI
@@ -1074,6 +1061,12 @@
             }
         }
 
+        function updateSliderTrack(slider) {
+            if (!slider) return;
+            const val = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+            slider.style.setProperty('--value', val + '%');
+        }
+
         // Wrap listeners to ensure elements exist
         window.onload = function() {
             const colorPicker = document.getElementById('rgbInput');
@@ -1088,14 +1081,8 @@
             const sliders = document.querySelectorAll('.slider');
             // Set initial values for all sliders on page load
             sliders.forEach(slider => {
-                const setVal = () => {
-                    const val = (slider.value - slider.min) / (slider.max - slider.min) * 100;
-                    slider.style.setProperty('--value', val + '%');
-                };
-                
-                // Update on move
-                slider.addEventListener('input', setVal);
-                setVal(); 
+                slider.addEventListener('input', () => updateSliderTrack(slider));
+                updateSliderTrack(slider); 
             }); 
 
             window.addEventListener('click', (e) => {
@@ -1166,6 +1153,40 @@
                 zone.appendChild(item);
             }
         }
+
+        new QWebChannel(qt.webChannelTransport, (channel) => {
+            window.bridge = channel.objects.pyBridge;
+
+            const slider = document.getElementById('blur-slider');
+
+            //Sending data on update to values
+            //Blur Factor Send
+            if (window.bridge && slider) {
+                slider.addEventListener('change', () => {
+                    window.bridge.receiveData(['blur-slider', slider.value]);
+                });
+            } else {
+                return
+            }
+
+            const updateElements = () => {
+                const slider = document.getElementById('blur-slider');
+
+                //Blur Factor Recieve
+                if (document.activeElement !== slider) {
+                    bridge.getData("blur", (blurValue) => {
+                        slider.value = blurValue * 25;
+                        updateSliderTrack(slider);
+                    });
+                }
+
+
+                
+            
+            };
+        updateElements();
+        setInterval(updateElements, 1000)
+        });
 
 
     </script>

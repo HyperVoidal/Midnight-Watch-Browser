@@ -175,6 +175,7 @@ class objectMasterBridge(QObject):
     searchRequested = Signal(str)
 
     #Placeholder signal to send back adjustments to the actionToggles.json file
+    dataReturned = Signal(str, str)
 
 
     def __init__(self):
@@ -189,14 +190,34 @@ class objectMasterBridge(QObject):
             print("HTML Bridge received: " + cQuery)
             self.searchRequested.emit(cQuery)
 
+    @Slot(list)
+    def receiveData(self, data):
+        if data:
+            #data is returned as a list giving [0, 1] for [header, value] for insertion into json files
+            dataHeader = data[0]
+            dataValue = data[1]
+            print(f"Received data: {dataHeader}: {dataValue}")
+
+            with open (f"{srcSourceDir}/data/actionToggles.json", "r") as file_grab:
+                settingsData = dict(json.load(file_grab))
+            
+            if dataHeader == "blur-slider":
+                settingsData["Blur"] = round(int(dataValue) / 25)
+            
+            with open (f"{srcSourceDir}/data/actionToggles.json", "w") as file_return:
+                json.dump(settingsData, file_return, indent=4)
+
     @Slot(str, result=str)
     def getData(self, key):
+        with open (f"{srcSourceDir}/data/actionToggles.json", "r") as file_grab:
+                settingsData = dict(json.load(file_grab))
+
         #Generalised getter for JS to pull data
         if key == "time":
-            timeFormat = (toggles["Time-Display"])[0]
+            timeFormat = (settingsData["Time-Display"])[0]
             timeCall = QDateTime.currentDateTime()
             #Syntax: time display goes "hh:mm:ss AP". AP is whether to display AM/PM, lowercase hh means 12-hr, uppercase means 24-hr
-            return timeCall.toString(f"{timeFormat} AP") if (toggles["Time-Display"])[1] == True else timeCall.toString(f"{timeFormat}")
+            return timeCall.toString(f"{timeFormat} AP") if (settingsData["Time-Display"])[1] == True else timeCall.toString(f"{timeFormat}")
 
         elif key == "date":
             #Syntax: formatting [0] is one of 5 options - Global, US, ISO, Long-Form, Minimalist. Formatting is below but super complicated. Formatting [1] is true/false for year.
@@ -213,7 +234,7 @@ class objectMasterBridge(QObject):
             yyyy: Year as four digit number (e.g. 1999). Can be a negative number for BCE years.
             """
 
-            date_format, provide_year = toggles["Date-Display"]
+            date_format, provide_year = settingsData["Date-Display"]
             dateCall = QDateTime.currentDateTime()
 
             # Define base formats without year info
@@ -239,28 +260,28 @@ class objectMasterBridge(QObject):
             return dateCall.toString(base)
         
         elif key == "greeting":
-            if toggles["Greeting"] == True:
+            if settingsData["Greeting"] == True:
                 hourCall = int(QDateTime.currentDateTime().toString("HH")) #returns time in 24hr
                 
                 match hourCall:
                     case hC if 4 <= hC < 12:
-                        return (f"Good Morning, " + toggles["Name"])
+                        return (f"Good Morning, " + settingsData["Name"])
                     case hC if 12 <= hC < 17:
-                        return (f"Good Afternoon, " + toggles["Name"])
+                        return (f"Good Afternoon, " + settingsData["Name"])
                     case hC if 17 <= hC < 21:
-                        return (f"Good Evening, " + toggles["Name"])
+                        return (f"Good Evening, " + settingsData["Name"])
                     case hC if (21 <= hC <= 23) or (0 <= hC < 4):
-                        return (f"Sleep Well, " + toggles["Name"])
+                        return (f"Sleep Well, " + settingsData["Name"])
                     case _:
-                        return (f"Hello, " + toggles["Name"])
+                        return (f"Hello, " + settingsData["Name"])
             else:
                 return ""
         
         elif key == "blur":
-            return str(f"{toggles["Blur"]}px")
+            return str(settingsData["Blur"])+"px"
         
         elif key == "BGimage":
-            return str(f"images/{toggles["Image-Url"]}")
+            return str(f"images/{settingsData["Image-Url"]}")
             
         else:
             return f"Error: Key: {str(key)} not found"
