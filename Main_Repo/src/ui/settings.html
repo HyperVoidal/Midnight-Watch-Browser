@@ -949,7 +949,7 @@
                 <div class="control-row">
                     <label>Cookie Filter Sensitivity</label>
                     <div class="slider-wrapper">
-                        <input type="range" min="0" max="2" value="1" step="1" class="slider" list="tickmarks" id="cookieFilterSens">
+                        <input type="range" min="0" max="2" step="1" class="slider" list="tickmarks" id="cookieFilterSens">
                         
                         <!-- Tick marks / Labels -->
                         <datalist id="tickmarks">
@@ -1154,36 +1154,51 @@
             }
         }
 
-        new QWebChannel(qt.webChannelTransport, (channel) => {
-            window.bridge = channel.objects.pyBridge;
 
-            const slider = document.getElementById('blur-slider');
+        function dataUploadLink(bridge_name, data_ID) {
+            var component = document.getElementById(data_ID)
 
-            //Sending data on update to values
-            //Blur Factor Send
-            if (window.bridge && slider) {
-                slider.addEventListener('change', () => {
-                    window.bridge.receiveData(['blur-slider', slider.value]);
-                });
+            if (bridge_name && component) {
+                component.addEventListener('change', () => {
+                    bridge_name.receiveData([String(data_ID), component.value])
+                    component.blur(); //unfocus component after release
+                })
             } else {
                 return
             }
+        }
+
+        function dataDownloadLink(bridge_name, data_name, data_ID, multiplier) {
+            var component = document.getElementById(data_ID)
+            multiplier = multiplier || 1;
+
+            if (document.activeElement !== component) {
+                bridge_name.getData(data_name, (Value) => {
+                    component.value = Number(Value) * multiplier
+                    if (component.className === "slider") {
+                        updateSliderTrack(component)
+                    }
+                })
+            }
+        }
+
+        new QWebChannel(qt.webChannelTransport, (channel) => {
+            window.bridge = channel.objects.pyBridge;
+
+            //Sending data on update to values
+            
+            dataUploadLink(window.bridge, "blur-slider") //Blur Factor Send
+            dataUploadLink(window.bridge, "cookieFilterSens") //Cookie Filter Strength Send
 
             const updateElements = () => {
-                const slider = document.getElementById('blur-slider');
-
-                //Blur Factor Recieve
-                if (document.activeElement !== slider) {
-                    bridge.getData("blur", (blurValue) => {
-                        slider.value = blurValue * 25;
-                        updateSliderTrack(slider);
-                    });
-                }
-
-
-                
+                //Receiving data to assign to values
+               dataDownloadLink(window.bridge, "blur", "blur-slider", 25) //Blur Factor Receive
+               dataDownloadLink(window.bridge, "cookieSens", "cookieFilterSens") //Cookie Filter Strength Receive
             
             };
+
+
+
         updateElements();
         setInterval(updateElements, 1000)
         });

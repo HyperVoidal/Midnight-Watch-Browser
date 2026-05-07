@@ -204,6 +204,9 @@ class objectMasterBridge(QObject):
             if dataHeader == "blur-slider":
                 settingsData["Blur"] = round(int(dataValue) / 25)
             
+            if dataHeader == "cookieFilterSens":
+                settingsData["Cookie-Prediction-Sensitivity"] = int(dataValue)
+            
             with open (f"{srcSourceDir}/data/actionToggles.json", "w") as file_return:
                 json.dump(settingsData, file_return, indent=4)
 
@@ -278,10 +281,10 @@ class objectMasterBridge(QObject):
                 return ""
         
         elif key == "blur":
-            return str(settingsData["Blur"])+"px"
+            return str(settingsData["Blur"])
         
-        elif key == "BGimage":
-            return str(f"images/{settingsData["Image-Url"]}")
+        elif key == "cookieSens":
+            return str(settingsData["Cookie-Prediction-Sensitivity"])
             
         else:
             return f"Error: Key: {str(key)} not found"

@@ -2,7 +2,7 @@
     "DNS-over-HTTPS": true,
     "Encrypted-Client Hello": true,
     "Cookie-Prediction-Sensitivity": 0,
-    "Cookie-Accept/Deny On Leave": 0,
+    "Cookie-Accept/Deny On Leave": 2,
     "Save-Tabs-On-Restart": 0,
     "Tab-Position": "West",
     "Top-Bar": [
