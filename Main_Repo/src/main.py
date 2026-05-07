@@ -75,7 +75,7 @@ if toggles["DNS-over-HTTPS"]:
 else:
     print("DNS-over-HTTPS disabled")
 
-if toggles["Encrypted-Client Hello"]:
+if toggles["Encrypted-Client-Hello"]:
     #Hides the SNI (the website name) during the SSL handshake
     sys.argv.append("--enable-features=EncryptedClientHello")
     print("Encrypted-Client Hello enabled")
@@ -86,11 +86,12 @@ if "Cookie-Prediction-Sensitivity" in toggles.keys():
     global sensitivity
     sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive
 
-if "Cookie-Accept/Deny On Leave" in toggles.keys():
+if "Cookie-Accept/Deny-On-Leave" in toggles.keys():
     global siteLeaveCookies
-    siteLeaveCookies = toggles["Cookie-Accept/Deny On Leave"] #0 for remove all, 1 for accept all
+    siteLeaveCookies = toggles["Cookie-Accept/Deny-On-Leave"] #0 for remove all, 1 for accept all
 
 if "Save-Tabs-On-Restart" in toggles.keys():
+    global saveTabsOnRestart
     saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
 
 # ---- MAIN FUNCTIONS ----
@@ -206,6 +207,27 @@ class objectMasterBridge(QObject):
             
             if dataHeader == "cookieFilterSens":
                 settingsData["Cookie-Prediction-Sensitivity"] = int(dataValue)
+
+            if dataHeader == "DNSoverHTTPS": 
+                settingsData["DNS-over-HTTPS"] = (str(dataValue).lower() == "true")
+            
+            if dataHeader == "EncryptedClientHello": 
+                settingsData["Encrypted-Client-Hello"] = (str(dataValue).lower() == "true")
+
+            if dataHeader == "TabCloseCookieAction": 
+                settingsData["Cookie-Accept/Deny-On-Leave"] = (str(dataValue).lower() == "true")
+            
+            if dataHeader == "SaveTabsOnReload":
+                settingsData["Save-Tabs-On-Restart"] = (str(dataValue).lower() == "true")
+
+            if dataHeader == "DisplayGreeting":
+                settingsData["Greeting"] = (str(dataValue).lower() == "true")
+
+            if dataHeader == "nameInput":
+                settingsData["Name"] = (str(dataValue))
+
+            if dataHeader == "timeInput":
+                settingsData["Time-Display"] = (str(dataValue))
             
             with open (f"{srcSourceDir}/data/actionToggles.json", "w") as file_return:
                 json.dump(settingsData, file_return, indent=4)
@@ -217,10 +239,11 @@ class objectMasterBridge(QObject):
 
         #Generalised getter for JS to pull data
         if key == "time":
-            timeFormat = (settingsData["Time-Display"])[0]
+            timeFormat = (settingsData["Time-Display"])
             timeCall = QDateTime.currentDateTime()
-            #Syntax: time display goes "hh:mm:ss AP". AP is whether to display AM/PM, lowercase hh means 12-hr, uppercase means 24-hr
-            return timeCall.toString(f"{timeFormat} AP") if (settingsData["Time-Display"])[1] == True else timeCall.toString(f"{timeFormat}")
+            #Syntax: time display goes "hh:mm:ss AP". AP is whether to display AM/PM, lowercase hh means 12-hr, uppercase means 24-hr. 
+            # Note current restrictions in settings menu allow any combination of these characters up to a max of 32 chars
+            return timeCall.toString(f"{timeFormat}")
 
         elif key == "date":
             #Syntax: formatting [0] is one of 5 options - Global, US, ISO, Long-Form, Minimalist. Formatting is below but super complicated. Formatting [1] is true/false for year.
@@ -268,23 +291,49 @@ class objectMasterBridge(QObject):
                 
                 match hourCall:
                     case hC if 4 <= hC < 12:
-                        return (f"Good Morning, " + settingsData["Name"])
+                        return (f"Good Morning, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Good Morning")
                     case hC if 12 <= hC < 17:
-                        return (f"Good Afternoon, " + settingsData["Name"])
+                        return (f"Good Afternoon, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Good Afternoon")
                     case hC if 17 <= hC < 21:
-                        return (f"Good Evening, " + settingsData["Name"])
+                        return (f"Good Evening, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Good Evening")
                     case hC if (21 <= hC <= 23) or (0 <= hC < 4):
-                        return (f"Sleep Well, " + settingsData["Name"])
+                        return (f"Sleep Well, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Sleep Well")
                     case _:
-                        return (f"Hello, " + settingsData["Name"])
+                        return (f"Hello, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Hello")
             else:
                 return ""
+        
+        elif key == "BGimage":
+            return str(f"images/{settingsData["Image-Url"]}")
+        
+        # Settings html bridge section
         
         elif key == "blur":
             return str(settingsData["Blur"])
         
         elif key == "cookieSens":
             return str(settingsData["Cookie-Prediction-Sensitivity"])
+        
+        elif key == "DNSoHTTPS":
+            return str(settingsData["DNS-over-HTTPS"])
+        
+        elif key == "ECH": 
+            return str(settingsData["Encrypted-Client-Hello"])
+        
+        elif key == "CookieActOnClose":
+            return str(settingsData["Cookie-Accept/Deny-On-Leave"])
+        
+        elif key == "SaveTabsOnRestart":
+            return str(settingsData["Save-Tabs-On-Restart"])
+        
+        elif key == 'GreetDisp':
+            return str(settingsData["Greeting"])
+
+        elif key == "Username":
+            return str(settingsData["Name"])
+        
+        elif key == "timeInputDisplay":
+            return str(settingsData["Time-Display"])
             
         else:
             return f"Error: Key: {str(key)} not found"
@@ -389,7 +438,9 @@ class Browser(QMainWindow):
 
         self.tabs = self.barManager.setup_tabs()
 
-        self.tabs.tabCloseRequested.connect(lambda i: (self.close_tab(i), QTimer.singleShot(0, self.tabs.tabBar().update_hover_from_cursor)))
+        if actionToggles["Tab-Position"] in ["East", "West"]:
+             self.tabs.tabCloseRequested.connect(lambda i: QTimer.singleShot(0, self.tabs.tabBar().update_hover_from_cursor))
+        self.tabs.tabCloseRequested.connect(lambda i: (self.close_tab(i)))
         self.tabs.currentChanged.connect(self.switch_tab)
 
         self.nav_bar = self.barManager.setup_navbar()
@@ -712,12 +763,15 @@ class Browser(QMainWindow):
             target_tab = self.tabs.widget(index)
             if target_tab:
                 target_url = target_tab.url().toString()
-                for key, data in list(self.cookiedict.items()):
-                    if data["domain"] in target_url:
-                        if siteLeaveCookies:
-                            self.cookieManager.acceptCookie(key)
-                        else:
-                            self.cookieManager.cookieEVAPORATOR(key)
+                if self.cookiedict is not None:
+                    for key, data in list(self.cookiedict.items()):
+                        if data["domain"] in target_url:
+                            if siteLeaveCookies:
+                                self.cookieManager.acceptCookie(key)
+                            else:
+                                self.cookieManager.cookieEVAPORATOR(key)
+                else:
+                    pass
 
                 # Clean up the page before removing the tab to prevent profile release errors
                 if hasattr(target_tab, 'page') and target_tab.page():

@@ -1,27 +1,24 @@
 {
     "DNS-over-HTTPS": true,
-    "Encrypted-Client Hello": true,
-    "Cookie-Prediction-Sensitivity": 0,
-    "Cookie-Accept/Deny On Leave": 2,
-    "Save-Tabs-On-Restart": 0,
-    "Tab-Position": "West",
+    "Encrypted-Client-Hello": true,
+    "Cookie-Prediction-Sensitivity": 2,
+    "Cookie-Accept/Deny-On-Leave": false,
+    "Save-Tabs-On-Restart": false,
+    "Tab-Position": "North",
     "Top-Bar": [
         "nav_bar"
     ],
     "Bottom-Bar": [
         "bookmarks_bar"
     ],
-    "Time-Display": [
-        "HH:mm",
-        false
-    ],
     "Date-Display": [
         "ISO",
         true
     ],
+    "Time-Display": "HH:mm:ss",
     "Name": "MidnightGuard",
     "Greeting": true,
-    "Blur": 10,
+    "Blur": 15,
     "Image-Url": "MainImageBackground.png",
     "Colour-Theme": "Secured Blue"
 }

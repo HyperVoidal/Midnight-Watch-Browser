@@ -197,7 +197,7 @@
                 });
                 //Blur Control - technically this could be outside of the greeting display but after settings implementation it's important to keep here
                 bridge.getData("blur", (blurValue) => {
-                    document.documentElement.style.setProperty("--bg-blur", blurValue);
+                    document.documentElement.style.setProperty("--bg-blur", `${blurValue}px`);
                 });
                 //Background image control - again could be out of the greeting display but with settings implemented, continual updates are important
                 bridge.getData('BGimage', (imageURL) => {

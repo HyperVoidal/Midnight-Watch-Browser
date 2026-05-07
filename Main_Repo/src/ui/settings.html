@@ -587,7 +587,7 @@
                 <div class="control-row">
                     <label>Name</label>
                     <div class="input-wrapper">
-                        <input type="text" class="custom-input" placeholder="Type here...">
+                        <input type="text" class="custom-input" placeholder="Type here..." id="nameInput">
                         <span class="input-focus-bg"></span>
                     </div>
                 </div>
@@ -598,7 +598,7 @@
                 
                 <div class="control-row">
                     <label class="checkbox-container">
-                        <input type="checkbox" checked>
+                        <input type="checkbox" id="SaveTabsOnReload" checked>
                         <span class="checkmark"></span>
                         Save Tabs on Browser Reload
                     </label>
@@ -608,7 +608,7 @@
 
                 <div class="control-row">
                     <label class="checkbox-container">
-                        <input type="checkbox" checked>
+                        <input type="checkbox" id="DisplayGreeting" checked>
                         <span class="checkmark"></span>
                         Display Greeting
                     </label>
@@ -649,7 +649,7 @@
                 <div class="control-row">
                     <label>Time Display</label>
                     <div class="input-wrapper">
-                        <input type="text" class="custom-input" placeholder="HH:mm"> <!-- Need to actually fill this using js, pull current config from json file-->
+                        <input type="text" class="custom-input" placeholder="HH:mm", id="timeInput">
                         <span class="input-focus-bg"></span>
                     </div>
                 </div>
@@ -965,7 +965,7 @@
                 <div class="text-spacer"></div>
                 <div class="control-row">
                     <label class="checkbox-container">
-                        <input type="checkbox" checked>
+                        <input type="checkbox" id="DNSoverHTTPS" checked>
                         <span class="checkmark"></span>
                         DNS over HTTPS
                     </label>
@@ -973,7 +973,7 @@
                 <div class="text-spacer"></div>
                 <div class="control-row">
                     <label class="checkbox-container">
-                        <input type="checkbox" checked>
+                        <input type="checkbox" id="EncryptedClientHello" checked>
                         <span class="checkmark"></span>
                         Encrypted Client Hello
                     </label>
@@ -981,9 +981,9 @@
                 <div class="text-spacer"></div>
                 <div class="control-row">
                     <label class="checkbox-container">
-                        <input type="checkbox" checked>
+                        <input type="checkbox" id ="TabCloseCookieAction" checked>
                         <span class="checkmark"></span>
-                        Automatic Cookie Action on Tab Close
+                        Automatic Cookie Accept on Tab Close
                     </label>
                 </div>
                 <div class="text-spacer"></div>
@@ -1155,13 +1155,51 @@
         }
 
 
+
         function dataUploadLink(bridge_name, data_ID) {
             var component = document.getElementById(data_ID)
 
             if (bridge_name && component) {
+                //Change detection, good for conventional events like clickable buttons or simple updates
                 component.addEventListener('change', () => {
-                    bridge_name.receiveData([String(data_ID), component.value])
-                    component.blur(); //unfocus component after release
+                    if (component.className === "slider") {
+                        bridge_name.receiveData([String(data_ID), component.value]);
+                        component.blur(); //unfocus component after release
+                    } else if (component.type === "checkbox" || component.classList.contains("checkmark")) {
+                        bridge_name.receiveData([String(data_ID), component.checked]);
+                    }
+                })
+                
+                //input text sanitiser for text entry boxes
+                if (component.type === "text" || component.classList.contains("custom-input")) {
+                    component.addEventListener('input', (e) => {
+                        if (["timeInput"].includes(component.id)) {
+                            // Strict Time Format Restriction
+                            e.target.value = e.target.value.replace(/[^HhmsAP: ]/g, "");
+                            if (e.target.value.length > 32) {
+                                e.target.value = e.target.value.substring(0, 32);
+                            }
+                        } else {
+                            //Strips common HTML/Script injection characters
+                            e.target.value = e.target.value.replace(/[<>/\\"';{}()]/g, "");
+                            
+                            //Limit name length to 32 characters
+                            if (e.target.value.length > 32) {
+                                e.target.value = e.target.value.substring(0, 32);
+                            }
+                        }
+                    });
+                }
+                
+                //Keydown detection for events with specific criteria e.g. text inputs require enter to register
+                component.addEventListener('keydown', (event) => {
+                    if (event.key === "Enter") {
+                        bridge_name.receiveData([String(data_ID), component.value]);
+                        //unfocus box, set placeholder to text, clear text
+                        component.blur();
+                        component.placeholder = component.value
+                        component.value = ""
+                    }
                 })
             } else {
                 return
@@ -1174,9 +1212,14 @@
 
             if (document.activeElement !== component) {
                 bridge_name.getData(data_name, (Value) => {
-                    component.value = Number(Value) * multiplier
                     if (component.className === "slider") {
-                        updateSliderTrack(component)
+                        component.value = Number(Value) * multiplier;
+                        updateSliderTrack(component);
+
+                    } else if (component.type === "checkbox" || component.classList.contains("checkmark")) {
+                        component.checked = (Value === true || Value === "True" || Value === "true");
+                    } else if (component.type === "text" || component.classList.contains("custom-input")) {
+                        component.placeholder = String(Value)
                     }
                 })
             }
@@ -1190,10 +1233,35 @@
             dataUploadLink(window.bridge, "blur-slider") //Blur Factor Send
             dataUploadLink(window.bridge, "cookieFilterSens") //Cookie Filter Strength Send
 
+            dataUploadLink(window.bridge, "DNSoverHTTPS") //DNS over HTTPS Send
+            dataUploadLink(window.bridge, "EncryptedClientHello") //Encrypted Client Hello Send
+            dataUploadLink(window.bridge, "TabCloseCookieAction") //Accept/Deny Cookies on Closing Tab Send
+            dataUploadLink(window.bridge, "SaveTabsOnReload") // Save Tabs on Browser Restart Send
+            dataUploadLink(window.bridge, "DisplayGreeting") // Display Greeting Send
+
+            dataUploadLink(window.bridge, "nameInput") //Name Input Send
+            dataUploadLink(window.bridge, "timeInput") //Time Input Send
+
+            
+
+            
+
+
             const updateElements = () => {
                 //Receiving data to assign to values
                dataDownloadLink(window.bridge, "blur", "blur-slider", 25) //Blur Factor Receive
                dataDownloadLink(window.bridge, "cookieSens", "cookieFilterSens") //Cookie Filter Strength Receive
+
+               dataDownloadLink(window.bridge, "DNSoHTTPS", "DNSoverHTTPS") //DNS over HTTPS Receive
+               dataDownloadLink(window.bridge, "ECH", "EncryptedClientHello") //Encrypted Client Hello Receive
+               dataDownloadLink(window.bridge, "CookieActOnClose", "TabCloseCookieAction") //Accept/Deny Cookies on Closing Tab Receive
+               dataDownloadLink(window.bridge, "SaveTabsOnRestart", "SaveTabsOnReload") // Save Tabs on Browser Restart Receive
+               dataDownloadLink(window.bridge, "GreetDisp", "DisplayGreeting") // Display Greeting Receive
+
+               dataDownloadLink(window.bridge, "Username", "nameInput") //Name Input Receive
+               dataDownloadLink(window.bridge, "timeInputDisplay", "timeInput") //Time Input Receive
+
+
             
             };
 
