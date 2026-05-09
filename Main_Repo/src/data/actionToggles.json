@@ -5,20 +5,24 @@
     "Cookie-Accept/Deny-On-Leave": false,
     "Save-Tabs-On-Restart": false,
     "Tab-Position": "North",
-    "Top-Bar": [
+    "Top-Stack": [
         "nav_bar"
     ],
-    "Bottom-Bar": [
+    "Bottom-Stack": [
         "bookmarks_bar"
+
+    ],
+    "Hidden-Stack": [
+        "status_bar"
     ],
     "Date-Display": [
-        "ISO",
+        "dddd, d MMMM",
         true
     ],
-    "Time-Display": "HH:mm:ss",
+    "Time-Display": "hh:mm:ss",
     "Name": "MidnightGuard",
     "Greeting": true,
-    "Blur": 15,
+    "Blur": 10,
     "Image-Url": "MainImageBackground.png",
     "Colour-Theme": "Secured Blue"
 }

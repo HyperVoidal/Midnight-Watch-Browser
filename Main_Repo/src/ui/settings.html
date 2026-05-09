@@ -619,7 +619,7 @@
                 <div class="text-spacer"></div>
                 
                 <div class="control-row">
-                    <div class="dropdown-container" data-setting="Date Display">
+                    <div class="dropdown-container" data-setting="Date Display" id="Date Display">
                         <label>Date Display</label>
                         <div class="dropdown-head" onclick="toggleDropdown(this)">
                             <span>Date Display</span>
@@ -633,12 +633,24 @@
                             <div class="dropdown-item" onclick="selectOption(this)">Minimalist</div>
                         </div>                  
                     </div>
+
                     <div class="text-spacer"></div>
+
                     <label class="checkbox-container">
-                        <input type="checkbox" checked>
+                        <input type="checkbox" id="yearInDate" checked>
                         <span class="checkmark"></span>
                         Show Year
                     </label>
+                    
+                    <div class="text-spacer"></div>
+
+                    <div class="control-row">
+                        <label>Advanced Date Formatting</label>
+                        <div class="input-wrapper">
+                            <input type="text" class="custom-input" placeholder="Date Formatting" id="advDate">
+                            <span class="input-focus-bg"></span>
+                        </div>
+                    </div>
                 </div>
                             
 
@@ -660,7 +672,7 @@
 
                 <!-- Tab Bar Position Controller-->
                 <div class="control-row">
-                    <div class="dropdown-container" data-setting="Tab Bar Pos">
+                    <div class="dropdown-container" data-setting="Tab Bar Pos" id="Tab Bar Pos">
                         <label>Tab Bar Position</label>
                         <div class="dropdown-head" onclick="toggleDropdown(this)">
                             <span>Tab Bar Position</span>
@@ -682,28 +694,28 @@
                 <div class="control-row">
                     <h4>Bar Location Manager</h4>
                     <div class="text-spacer"></div>
-                    <div class="hierarchy-editor">
+                    <div class="hierarchy-editor", id="TabStack">
                         <!-- Top Bars -->
                         <div class="bar-section">
                             <label>Top Bars</label>
-                            <div class="drop-zone" id="top-stack" ondragover="allowDrop(event)" ondrop="drop(event)">
-                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="address-bar">Search</div>
+                            <div class="drop-zone" id="Top-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="nav_bar">Search</div>
                             </div>
                         </div>
 
                         <!-- Bottom Bars -->
                         <div class="bar-section">
                             <label>Bottom Bars</label>
-                            <div class="drop-zone" id="bottom-stack" ondragover="allowDrop(event)" ondrop="drop(event)">
-                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="bookmarks-bar">Bookmarks</div>
+                            <div class="drop-zone" id="Bottom-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="bookmarks_bar">Bookmarks</div>
                             </div>
                         </div>
 
                         <!-- Hidden -->
                         <div class="bar-section">
                             <label>Hidden</label>
-                            <div class="drop-zone" id="hidden-stack" ondragover="allowDrop(event)" ondrop="drop(event)">
-                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="status-bar">Status Info</div> <!-- Potential Status Bar System, if I have time to add later-->
+                            <div class="drop-zone" id="Hidden-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="status_bar">Status Info</div> <!-- Potential Status Bar System, if I have time to add later-->
                             </div>
                         </div>
                     </div>
@@ -998,7 +1010,8 @@
 
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script>
-        let bgDropArea = document.getElementById('bg-drop-area')
+        let bgDropArea = document.getElementById('bg-drop-area');
+        var requiredDropUrlHead;
 
         // Function to switch navigation tabs
         function switchTab(el, tabId) {
@@ -1039,16 +1052,29 @@
 
             if (files.length > 0) {
                 const file = files[0];
-                const img = document.createElement('img');
+
+                const img = document.createElement('img');  
                 img.src = URL.createObjectURL(file);
                 gallery.appendChild(img);
+
                 Array.from(files).forEach(uploadFile);
             }
         }   
 
 
         function uploadFile(file) {
-            console.log(">:(") //this will just be linking back to the bridge system
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                // e.target.result is a string: "data:image/png;base64,iVBORw..."
+                const base64Data = e.target.result;
+                window.bridge.receiveData(["imageUpload", {
+                    "name": file.name,
+                    "data": base64Data
+                }]);
+            };
+
+            reader.readAsDataURL(file);
         }
 
         function previewFile(file) {
@@ -1130,7 +1156,8 @@
 
             //log changes. Try to pull settingType out for bridge changes and use data-setting defined in the dropdown-container class to locate which setting is being updated specifically
             const settingType = parent.getAttribute('data-setting'); 
-            console.log(`Setting ${settingType} changed to ${text}`);
+            console.log(`Setting for ${settingType} changed to ${text}`);
+            window.bridge.receiveData([settingType, text]);
         }
 
         function allowDrop(tabDragDropElement) {
@@ -1152,6 +1179,21 @@
             if (zone) {
                 zone.appendChild(item);
             }
+
+
+            //Send files to bridge
+            const zones = document.querySelectorAll('.drop-zone');
+            const fullState = {};
+
+            zones.forEach(z => {
+                // Map the IDs of children in their current order
+                const items = Array.from(z.children).map(child => child.id);
+                
+                // Use the zone's ID as the key 
+                fullState[z.id] = items;
+            });
+
+            window.bridge.receiveData(["Stacks", JSON.stringify(fullState)]);
         }
 
 
@@ -1176,6 +1218,11 @@
                         if (["timeInput"].includes(component.id)) {
                             // Strict Time Format Restriction
                             e.target.value = e.target.value.replace(/[^HhmsAP: ]/g, "");
+                            if (e.target.value.length > 32) {
+                                e.target.value = e.target.value.substring(0, 32);
+                            }
+                        } else if (["advDate"].includes(component.id)) {
+                            e.target.value = e.target.value.replace(/[^dDmMyY/., -]/g, "");
                             if (e.target.value.length > 32) {
                                 e.target.value = e.target.value.substring(0, 32);
                             }
@@ -1206,20 +1253,43 @@
             }
         }
 
-        function dataDownloadLink(bridge_name, data_name, data_ID, multiplier) {
+        function dataDownloadLink(bridge_name, data_name, data_ID) {
             var component = document.getElementById(data_ID)
-            multiplier = multiplier || 1;
 
             if (document.activeElement !== component) {
                 bridge_name.getData(data_name, (Value) => {
                     if (component.className === "slider") {
-                        component.value = Number(Value) * multiplier;
+                        component.value = Number(Value) * 25; //Normalise to the proper values
                         updateSliderTrack(component);
 
                     } else if (component.type === "checkbox" || component.classList.contains("checkmark")) {
                         component.checked = (Value === true || Value === "True" || Value === "true");
                     } else if (component.type === "text" || component.classList.contains("custom-input")) {
                         component.placeholder = String(Value)
+                    } else if (component.classList.contains("dropdown-container")) {
+                        component.querySelector('.dropdown-head span').textContent = String(Value);
+                    } else if (component.classList.contains("hierarchy-editor")) {
+                        const settings = typeof Value === 'string' ? JSON.parse(Value) : Value;
+                        const barLabels = {"nav_bar": "Search", "bookmarks_bar": "Bookmarks", "status_bar": "Status Info"};
+                        Object.keys(settings).forEach(stackKey => {
+                            const container = component.querySelector(`#${stackKey}`);
+                            
+                            if (container) {
+                                container.innerHTML = '';
+
+                                settings[stackKey].forEach(itemId => {
+                                    const barItem = document.createElement('div');
+                                    barItem.className = 'bar-item';
+                                    barItem.id = itemId;
+                                    barItem.draggable = true;
+                                    barItem.innerText = barLabels[itemId] || itemId;
+
+                                    barItem.ondragstart = (event) => drag(event);
+                                    
+                                    container.appendChild(barItem);
+                                });
+                            }
+                        });
                     }
                 })
             }
@@ -1238,10 +1308,14 @@
             dataUploadLink(window.bridge, "TabCloseCookieAction") //Accept/Deny Cookies on Closing Tab Send
             dataUploadLink(window.bridge, "SaveTabsOnReload") // Save Tabs on Browser Restart Send
             dataUploadLink(window.bridge, "DisplayGreeting") // Display Greeting Send
+            dataUploadLink(window.bridge, "yearInDate") //Date in Year Display Send
 
             dataUploadLink(window.bridge, "nameInput") //Name Input Send
             dataUploadLink(window.bridge, "timeInput") //Time Input Send
+            dataUploadLink(window.bridge, "advDate") //Advanced Date Input Send
 
+            //Tab Bar Position Sender and Date Input Sender in a shared dropdown click interpreter function called selectOption
+            //Stack Order Controller Sender is linked to the movement trigger in the drop function
             
 
             
@@ -1249,7 +1323,7 @@
 
             const updateElements = () => {
                 //Receiving data to assign to values
-               dataDownloadLink(window.bridge, "blur", "blur-slider", 25) //Blur Factor Receive
+               dataDownloadLink(window.bridge, "blur", "blur-slider") //Blur Factor Receive
                dataDownloadLink(window.bridge, "cookieSens", "cookieFilterSens") //Cookie Filter Strength Receive
 
                dataDownloadLink(window.bridge, "DNSoHTTPS", "DNSoverHTTPS") //DNS over HTTPS Receive
@@ -1257,9 +1331,16 @@
                dataDownloadLink(window.bridge, "CookieActOnClose", "TabCloseCookieAction") //Accept/Deny Cookies on Closing Tab Receive
                dataDownloadLink(window.bridge, "SaveTabsOnRestart", "SaveTabsOnReload") // Save Tabs on Browser Restart Receive
                dataDownloadLink(window.bridge, "GreetDisp", "DisplayGreeting") // Display Greeting Receive
+               dataDownloadLink(window.bridge, "dateYear", "yearInDate") //Date in Year Display Receive
 
                dataDownloadLink(window.bridge, "Username", "nameInput") //Name Input Receive
                dataDownloadLink(window.bridge, "timeInputDisplay", "timeInput") //Time Input Receive
+               dataDownloadLink(window.bridge, "AdvancedDateFormatting", "advDate") //Advanced Date Input Receive
+
+               dataDownloadLink(window.bridge, "tabBarPos", "Tab Bar Pos") //Tab Bar Position Receive
+               dataDownloadLink(window.bridge, "DateDisplay", "Date Display") //Date Input Receive
+
+               dataDownloadLink(window.bridge, "StackEditor", "TabStack"); //Stack Order Controller Receive
 
 
             

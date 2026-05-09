@@ -20,6 +20,9 @@ from PIL import Image, ImageOps
 import json
 import re
 import uuid
+import base64
+import io
+import hashlib
 from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
@@ -228,6 +231,81 @@ class objectMasterBridge(QObject):
 
             if dataHeader == "timeInput":
                 settingsData["Time-Display"] = (str(dataValue))
+
+            if dataHeader == "Tab Bar Pos": 
+                keymap = {
+                    "Top": "North",
+                    "Bottom": "South",
+                    "Vertical Left": "West",
+                    "Vertical Right": "East" 
+                }
+                settingsData["Tab-Position"] = (keymap[str(dataValue)])
+            
+            if dataHeader == "Stacks":
+                try:
+                    data_dict = json.loads(dataValue)
+
+                    top_stack = data_dict.get("Top-Stack", [])
+                    bottom_stack = data_dict.get("Bottom-Stack", [])
+                    hidden_stack = data_dict.get("Hidden-Stack", [])
+
+                    settingsData["Top-Stack"] = top_stack
+                    settingsData["Bottom-Stack"] = bottom_stack
+                    settingsData["Hidden-Stack"] = hidden_stack
+                    
+                except json.JSONDecodeError as e:
+                    print(f"Failed to parse JSON: {e}")
+
+            if dataHeader == "Date Display":
+                format_map = {
+                    "Global": "dd/MM",
+                    "US": "M/d",
+                    "ISO": "MM-dd",  
+                    "Long-Form": "dddd, d MMMM",
+                    "Minimalist": "dd MMM"
+                }
+                (settingsData["Date-Display"])[0] = (format_map[str(dataValue)])
+
+            if dataHeader == "yearInDate":
+                (settingsData["Date-Display"])[1] = (str(dataValue).lower() == "true")
+            
+            if dataHeader == "advDate":
+                settingsData["Date-Display"][0] = (str(dataValue))
+            
+            if dataHeader == "imageUpload":
+                fileInfo = dataValue
+                fileName = fileInfo["name"]
+                header, encoded = fileInfo["data"].split(",", 1)
+                file_bytes = base64.b64decode(encoded)
+
+                #Image upload sanitiser - make sure it's not a hidden attack (e.g. image.exe.png or some other non-image item)
+                try:
+                    img = Image.open(io.BytesIO(file_bytes))
+                    img.verify()
+
+                    new_file_hash = hashlib.md5(file_bytes).hexdigest()
+
+                    save_path = os.path.join(f"{srcSourceDir}/ui/images/", fileName)
+
+                    if os.path.exists(save_path):
+                        with open(save_path, "rb") as existing_file:
+                            existing_hash = hashlib.md5(existing_file.read()).hexdigest()
+                        
+                        if new_file_hash == existing_hash:
+                            print("Attempted upload image present in files already! Defaulting to using current name")
+                        else:
+                            random_suffix = uuid.uuid4().hex[:8] #generate random file addition to avoid overwrites if the users' pasted image is different
+                            name_part, extension = os.path.splitext(fileName)
+                            fileName = f"{name_part}_{random_suffix}{extension}"
+                            save_path = os.path.join(f"{srcSourceDir}/ui/images/", fileName)
+
+                    with open (save_path, "wb") as f:
+                        f.write(file_bytes)
+                    settingsData["Image-Url"] = fileName
+                
+                except Exception as e:
+                    print(f"Possible Security Alert, invalid image type? Error: {e}")
+
             
             with open (f"{srcSourceDir}/data/actionToggles.json", "w") as file_return:
                 json.dump(settingsData, file_return, indent=4)
@@ -260,30 +338,38 @@ class objectMasterBridge(QObject):
             yyyy: Year as four digit number (e.g. 1999). Can be a negative number for BCE years.
             """
 
-            date_format, provide_year = settingsData["Date-Display"]
+            date_format, provide_year = settingsData["Date-Display"][0], settingsData["Date-Display"][1]
             dateCall = QDateTime.currentDateTime()
 
             # Define base formats without year info
             format_map = {
-                "Global": "dd/MM",
-                "US": "M/d",
-                "ISO": "MM-dd",  
-                "Long-Form": "dddd, d MMMM",
-                "Minimalist": "dd MMM"
-            }
+                    "dd/MM": "Global",
+                    "M/d": "US",
+                    "MM-dd": "ISO",  
+                    "dddd, d MMMM": "Long-Form",
+                    "dd MMM": "Minimalist"
+                }
+            
+            if date_format in format_map.keys():
+                base = format_map[date_format]
 
-            base = format_map.get(date_format, "dd/MM")
+                # Specific year-attachment logic per format
+                if provide_year:
+                    if base == "ISO":
+                        date_format = f"yyyy-{date_format}"
+                    elif base in ["Global", "US"]:
+                        date_format += "/yyyy"
+                    else: # Long-Form and Minimalist
+                        date_format += " yyyy"
 
-            # Specific year-attachment logic per format
-            if provide_year:
-                if date_format == "ISO":
-                    base = f"yyyy-{base}"
-                elif date_format in ["Global", "US"]:
-                    base += "/yyyy"
-                else: # Long-Form and Minimalist
-                    base += " yyyy"
+            else:
+                if provide_year:  
+                    date_format += " yyyy"
+                else:
+                    pass
 
-            return dateCall.toString(base)
+
+            return dateCall.toString(date_format)
         
         elif key == "greeting":
             if settingsData["Greeting"] == True:
@@ -334,6 +420,42 @@ class objectMasterBridge(QObject):
         
         elif key == "timeInputDisplay":
             return str(settingsData["Time-Display"])
+        
+        elif key == "tabBarPos":
+            keymap = {
+                "North": "Top",
+                "South": "Bottom",
+                "West": "Vertical Left",
+                "East": "Vertical Right"
+            }
+            return str(keymap[settingsData["Tab-Position"]])
+
+        elif key == "StackEditor":
+            StackEditorDict = {
+                "Top-Stack": settingsData["Top-Stack"],
+                "Bottom-Stack": settingsData["Bottom-Stack"],
+                "Hidden-Stack": settingsData["Hidden-Stack"]
+            }
+            return json.dumps(StackEditorDict)
+
+        elif key == "DateDisplay":
+            format_map = {
+                    "dd/MM": "Global",
+                    "M/d": "US",
+                    "MM-dd": "ISO",  
+                    "dddd, d MMMM": "Long-Form",
+                    "dd MMM": "Minimalist"
+                }
+            if settingsData["Date-Display"][0] in format_map.keys():
+                return str(format_map[settingsData["Date-Display"][0]]) 
+            else:
+                return "Custom Date Value"
+        
+        elif key == "dateYear":
+            return str(settingsData["Date-Display"][1])
+
+        elif key == "AdvancedDateFormatting":
+            return str(settingsData["Date-Display"][0])
             
         else:
             return f"Error: Key: {str(key)} not found"
@@ -351,7 +473,7 @@ class objectMasterBridge(QObject):
 class Browser(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Midnight Engine")
+        self.setWindowTitle("Midnight Watch Browser")
         self.resize(1200, 800)
         self.setWindowIcon(get_normIcon("tightlyCroppedIcon.png"))
         global eColsStyle
@@ -360,12 +482,11 @@ class Browser(QMainWindow):
 
         
 
-        self.user = "mainUser" #make a system for this at some point!!!from PySide6.QtWebEngineCore import QWebEngineProfile
+        self.user = "mainUser"
 
         
         self.profile = QWebEngineProfile("PersistentUser", self)
         self.current_browser = QWebEngineView(self)
-        #self.profile.persistentCookiesPolicy() = True #enable this another time
 
         #Url Manager
         self.UrlManager = UrlManager()
@@ -452,7 +573,7 @@ class Browser(QMainWindow):
             PositionOrder = dict(json.load(f))
 
         #set components on top and bottom based on json settings
-        for element in PositionOrder["Top-Bar"]:
+        for element in PositionOrder["Top-Stack"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
@@ -470,7 +591,7 @@ class Browser(QMainWindow):
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout.addWidget(self.tabs, 1)
 
-        for element in PositionOrder["Bottom-Bar"]:
+        for element in PositionOrder["Bottom-Stack"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
