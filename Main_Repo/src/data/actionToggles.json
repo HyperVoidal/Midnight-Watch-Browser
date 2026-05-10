@@ -1,7 +1,7 @@
 {
     "DNS-over-HTTPS": true,
     "Encrypted-Client-Hello": true,
-    "Cookie-Prediction-Sensitivity": 2,
+    "Cookie-Prediction-Sensitivity": 1,
     "Cookie-Accept/Deny-On-Leave": false,
     "Save-Tabs-On-Restart": false,
     "Tab-Position": "North",
@@ -10,7 +10,6 @@
     ],
     "Bottom-Stack": [
         "bookmarks_bar"
-
     ],
     "Hidden-Stack": [
         "status_bar"

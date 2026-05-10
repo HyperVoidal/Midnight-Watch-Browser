@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import requests
-from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor
+from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor, QPalette
 from PySide6.QtWidgets import *
 from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve
 from PySide6.QtWidgets import QTabWidget
@@ -673,9 +673,14 @@ class VerticalTabBar(QTabBar):
                 )
 
             # --- TEXT ---
-            if self.width() > self.collapsed_width + 20: 
+            if self.width() > self.collapsed_width + 20:
+
+                text_color = self.tabTextColor(i)
+
+                painter.setPen(text_color)
+
                 text_rect = QRect(
-                    icon_x + icon_size.width() +6,
+                    icon_x + icon_size.width() + 6,
                     rect.top(),
                     rect.width() - (icon_size.width() + 10),
                     rect.height()

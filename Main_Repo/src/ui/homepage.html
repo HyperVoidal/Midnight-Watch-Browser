@@ -139,6 +139,29 @@
             display: block;
         }
 
+        .settings-container {
+            position: absolute;
+            bottom: 15px;
+            right: 20px;
+            text-align: left;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end; 
+        }
+
+        .settings-container img {
+            width: 32px;
+            height: auto;
+            display: block;
+            transition: transform 0.2s ease;
+        }
+        
+        /* this does literally nothing but make the settings icon become larger when hovering */
+        .settings-container img:hover {
+            transform: scale(1.1) rotate(90deg);
+        }
+
         /* Style the placeholder text color */
         #engine-search-bar::placeholder {
             color: rgba(255, 255, 255, 0.4);
@@ -202,8 +225,14 @@
                 //Background image control - again could be out of the greeting display but with settings implemented, continual updates are important
                 bridge.getData('BGimage', (imageURL) => {
                     document.documentElement.style.setProperty("--background", `url('${imageURL}')`);
-                });
-            
+                });            
+                bridge.getData('settingsLink', (settingsLink) => {
+                    const imgElement = document.getElementById("settingsIcon");
+                    if (imgElement) {
+                        const cacheBuster = "?t=" + new Date().getTime(); //appends a harmless string to the end of the file, forces cache to reload each time so the icon updates to the colours on theme switch
+                        imgElement.src = settingsLink + cacheBuster;
+                    }
+                })
             };
 
             const searchBox = document.getElementById('engine-search-bar');
@@ -259,6 +288,11 @@
             <div class="search-container" id="search-wrapper" data-value="">
                 <input type="text" id="engine-search-bar" placeholder="Search the web..." autocomplete="off">
             </div>
+        </div>
+        <div class="settings-container">
+            <a href="midnightwatch://local/settings.html">
+                <img id="settingsIcon" src="ui/icon_cache/settings.png" alt="Open Settings">
+            </a>
         </div>
     </div>
 

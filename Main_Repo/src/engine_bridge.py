@@ -65,6 +65,12 @@ RESOURCE_MAP = {
     QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMedia: "media",
 }
 
+YOUTUBE_ALLOWLIST = [
+    "static.doubleclick.net/instream/ad_status.js",
+    "i.ytimg.com/generate_204",
+    "googlevideo.com/generate_204",
+]
+
 def get_cosmetic_filters(url: str):
     try:
         # Get the resources object for the specific URL
@@ -98,11 +104,20 @@ def get_scriptlets(url: str):
 
 
 def is_url_safe(url: str, source_url: str, qt_resource_type):
-    # Map the resource type using the RESOURCE_MAP from earlier
+
+    # Allow critical YouTube playback/probe URLs
+    if "youtube.com" in source_url:
+
+        for allowed in YOUTUBE_ALLOWLIST:
+            if allowed in url:
+                return True
+
     rtype = RESOURCE_MAP.get(qt_resource_type, "other")
-    
-    # check_network_urls returns a BlockerResult object
-    result = engine.check_network_urls(url, source_url, rtype)
-    
-    # BlockerResult has a .matched attribute (True if it should be blocked)
+
+    result = engine.check_network_urls(
+        url,
+        source_url,
+        rtype
+    )
+
     return not result.matched

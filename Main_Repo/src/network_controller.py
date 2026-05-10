@@ -68,7 +68,8 @@ class UrlManager():
                 key.startswith("utm_") or
                 key == "si" or
                 key == "sei" or
-                key in ("fbclid", "gclid")
+                key in ("fbclid", "gclid") or
+                key in ("sg_ss", "ved", "ei", "source", "gs_lcrp", "sca_esv", "iflsig", "uact", "oq", "aqs")
             ):
                 continue
 
@@ -98,10 +99,6 @@ class UrlManager():
 class AdInterceptor(QWebEngineUrlRequestInterceptor):
     def interceptRequest(self, info):
         url = info.requestUrl().toString()
-        
-        # Don't block chrome-extension:// URLs (extension popups/options)
-        if url.startswith("chrome-extension://"):
-            return
         
         source_url = info.firstPartyUrl().toString()
         
@@ -162,7 +159,7 @@ class ScriptletBlocker:
 
 class EVAdInterceptor():
     @staticmethod
-    def deployPayload(browser): #function for blocking ads in embedded in videos   
+    def deployPayload(browser, profile): #function for blocking ads in embedded in videos   
         try:
             with open(f"{srcSourceDir}/Javascript_Executables/embeddedadblocker.js", 'r', encoding='utf-8') as f:
                 js_code = f.read()
@@ -178,7 +175,7 @@ class EVAdInterceptor():
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         script.setRunsOnSubFrames(True)
 
-        #Youtube adblocker script deployment, courtesy of https://github.com/kananinirav/Youtube-AdBlocker/blob/master/content.js
+
         try:
             with open(f"{srcSourceDir}/Javascript_Executables/youtubeBlocker.js", 'r', encoding='utf-8') as f:
                 ytb_txt = f.read()
@@ -193,6 +190,7 @@ class EVAdInterceptor():
         ytbScript.setRunsOnSubFrames(True)
 
         #Add to the page's script collection
-        browser.page().scripts().clear()
-        browser.page().scripts().insert(script)
-        browser.page().scripts().insert(ytbScript)
+        #browser.page().scripts().clear()
+        #profile.scripts?
+        profile.scripts().insert(script)
+        profile.scripts().insert(ytbScript)

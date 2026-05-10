@@ -261,7 +261,11 @@
         }
 
 
+
+
         /* Checkbox System */
+
+
         .checkbox-container {
             display: flex;
             align-items: center;
@@ -961,13 +965,14 @@
                 <div class="control-row">
                     <label>Cookie Filter Sensitivity</label>
                     <div class="slider-wrapper">
-                        <input type="range" min="0" max="2" step="1" class="slider" list="tickmarks" id="cookieFilterSens">
+                        <input type="range" min="0" max="3" step="1" class="slider" list="tickmarks" id="cookieFilterSens">
                         
                         <!-- Tick marks / Labels -->
                         <datalist id="tickmarks">
                             <option value="0" label="No Blocking"></option>
                             <option value="1" label="Midground Blocking"></option>
                             <option value="2" label="Extreme"></option>
+                            <option value="3" label="ULTRA(cookie)KILL"></option>
                         </datalist>
 
                     </div>
@@ -1258,10 +1263,21 @@
 
             if (document.activeElement !== component) {
                 bridge_name.getData(data_name, (Value) => {
-                    if (component.className === "slider") {
-                        component.value = Number(Value) * 25; //Normalise to the proper values
-                        updateSliderTrack(component);
+                    if (component.classList.contains("slider")) {
 
+                        // Blur slider uses normalized storage
+                        if (component.id === "blur-slider") {
+                            component.value = Number(Value) * 25;
+
+                        // Cookie slider stores native values
+                        } else if (component.id === "cookieFilterSens") {
+                            component.value = Number(Value);
+
+                        } else {
+                            component.value = Number(Value);
+                        }
+
+                        updateSliderTrack(component);
                     } else if (component.type === "checkbox" || component.classList.contains("checkmark")) {
                         component.checked = (Value === true || Value === "True" || Value === "true");
                     } else if (component.type === "text" || component.classList.contains("custom-input")) {

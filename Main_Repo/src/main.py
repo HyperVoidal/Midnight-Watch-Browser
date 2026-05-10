@@ -87,7 +87,7 @@ else:
 
 if "Cookie-Prediction-Sensitivity" in toggles.keys():
     global sensitivity
-    sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive
+    sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive, 3 for block everything with no limits. Anything past 1 may break persistent data
 
 if "Cookie-Accept/Deny-On-Leave" in toggles.keys():
     global siteLeaveCookies
@@ -182,10 +182,11 @@ class objectMasterBridge(QObject):
     dataReturned = Signal(str, str)
 
 
-    def __init__(self):
+    def __init__(self, browser):
         super().__init__()
         with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
             self.colourData = dict(json.load(f))
+        self.browser = browser
 
     @Slot(str)
     def receiveSearchQuery(self, query):
@@ -210,6 +211,10 @@ class objectMasterBridge(QObject):
             
             if dataHeader == "cookieFilterSens":
                 settingsData["Cookie-Prediction-Sensitivity"] = int(dataValue)
+                #update filter sentivity
+                new_level = int(dataValue)
+                settingsData["Cookie-Prediction-Sensitivity"] = new_level
+                self.browser.cookieManager.updateSensitivity(new_level)
 
             if dataHeader == "DNSoverHTTPS": 
                 settingsData["DNS-over-HTTPS"] = (str(dataValue).lower() == "true")
@@ -392,6 +397,10 @@ class objectMasterBridge(QObject):
         elif key == "BGimage":
             return str(f"images/{settingsData["Image-Url"]}")
         
+        elif key == "settingsLink":
+            abs_path = os.path.abspath(f"{srcSourceDir}/ui/icon_cache/settings.png")
+            return f"file:///{abs_path.replace(os.sep, '/')}" 
+        
         # Settings html bridge section
         
         elif key == "blur":
@@ -549,6 +558,13 @@ class Browser(QMainWindow):
         self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
 
 
+        #instantiate objectMasterBridge
+        self.objectBridge = objectMasterBridge(self)
+        self.objectBridge.searchRequested.connect(self.htmlSearch)
+        self.channel = QWebChannel(self.current_browser.page())
+        self.channel.registerObject("pyBridge", self.objectBridge)
+
+
         #Bar Management System
         self.container = QWidget()
         self.layout = QVBoxLayout(self.container)
@@ -604,13 +620,6 @@ class Browser(QMainWindow):
 
         self.setCentralWidget(self.container)
 
-
-        #Object bridging
-        self.objectBridge = objectMasterBridge()
-        self.objectBridge.searchRequested.connect(self.htmlSearch)
-        self.channel = QWebChannel(self.current_browser.page())
-        self.channel.registerObject("pyBridge", self.objectBridge)
-
     
 
         #Colour palette systems
@@ -639,8 +648,7 @@ class Browser(QMainWindow):
         self.SelectColourTheme(self.selectedprofile, Colourdata)
 
         #Deploy js code when webpage starts
-        EVAdInterceptor.deployPayload(browser=self.current_browser) #TODO: Script executes but doesn't actually work, research into that??? storage access permission denied
-        #alternatively, just work on rudimentary adblock and suggest ublock; integrate chrome extensions store
+        EVAdInterceptor.deployPayload(browser=self.current_browser, profile=self.profile)
 
 
 
@@ -1178,8 +1186,12 @@ class Browser(QMainWindow):
     '''Colour Theme Management'''
     
     def SelectColourTheme(self, profile, themes):
-        self.tabs.setStyleSheet("")
-        self.tabs.tabBar().setStyleSheet("")
+        self.tabs.tabBar().setStyleSheet("""
+            QTabBar::tab {
+                height: 35px;
+                width: 200px;
+            }
+            """)
         global eColsButton, eColsStyle
         self.selectedprofile = profile
 
@@ -1297,12 +1309,16 @@ class Browser(QMainWindow):
                     pal.setColor(QPalette.Window, color)
                     tabbar.setAutoFillBackground(True)
                     tabbar.setPalette(pal)
-                    # fallback: explicitly set stylesheet on tabBar so background is reliably visible
-                    existing = tabbar.styleSheet() or ""
-                    size_rule = "QTabBar::tab { height: 30px; width: 150px; }"
-                    if "QTabBar::tab" not in existing:
-                        existing = existing + "\n" + size_rule
-                    tabbar.setStyleSheet(existing + f"\nQTabBar {{ background-color: rgb({r}, {g}, {b}); }}")
+                    tabbar.setStyleSheet(f"""
+                        QTabBar {{
+                            background-color: rgb({r}, {g}, {b});
+                        }}
+
+                        QTabBar::tab {{
+                            height: 35px;
+                            width: 200px;
+                        }}
+                    """)
 
                     # Also set the QTabWidget pane background so the area behind tabs matches
                     tabs_pal = self.tabs.palette()
@@ -1314,6 +1330,7 @@ class Browser(QMainWindow):
                     # Update existing tab text contrast
                     for i in range(self.tabs.count()):
                         tabbar.setTabTextColor(i, self.contrast_qcolor)
+                    tabbar.repaint()
 
                     #print(r, g, b)
                     self.tabs.setStyleSheet(f"QTab::pane {{ color: rgb({r}, {g}, {b}); }}")
@@ -1479,7 +1496,6 @@ class Browser(QMainWindow):
         self.cookieManager.refresh_cookie_list()
         self.cookieMenu.adjustSize()
         self.cookieGUI() 
-
 
 
 

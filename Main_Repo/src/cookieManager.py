@@ -9,6 +9,11 @@ class CookieManager:
         self.Sensitivity = sensitivity #determines how defensive/sensitive the cookie prediction system is
         # Start the filter immediately
         self.setup_filter()
+    
+    def updateSensitivity(self, newSensitivity):
+        self.Sensitivity = int(newSensitivity)
+        print(f"Cookie sensitivity updated to: {self.Sensitivity}")
+
 
     def setup_filter(self):
         self.store.setCookieFilter(self.filter_logic)
@@ -22,14 +27,15 @@ class CookieManager:
         #security layer 1 - third party cookies. There are only a few niche use cases like embedded players remembering account data from your browser, but that 
         #also provides an addiional attack vector for tracking and fingerprinting, so we block all third-party cookies by default. Regardless of the usefulness,
         #fingerprinting is still fingerprinting, especially without consent, and this is by no means website-breaking.
-        if request.thirdParty:
-            print(f"Blocked third-party cookie from: {request.origin.toString()}")
-            return False  # Deny
+        if self.Sensitivity > 0:
+            if request.thirdParty:
+                print(f"Blocked third-party cookie from: {request.origin.toString()}")
+                return False  # Deny
         
         #security layer 2 - domain reputation.
         # Since we can't see the 'name' in the filter, 
         # we filter based on the reputation of the domain
-        if self.Sensitivity == 2:
+        if self.Sensitivity == 2 or self.Sensitivity == 3:
             return False  # Block all
             
         if self.Sensitivity == 1:
@@ -73,6 +79,15 @@ class CookieManager:
         if self.Sensitivity == 0:
             return self.pending_cookies
         elif self.Sensitivity == 1:
+            try:
+                for key, value in self.pending_cookies.items():
+                    if value["prediction"] == value["prediction"] == "Advertising" or value["prediction"] == "Analytics (Tracking)":
+                        self.cookieEVAPORATOR(key)
+                    else:
+                        pass
+            except RuntimeError:
+                return
+        elif self.Sensitivity == 2:
             try:
                 for key, value in self.pending_cookies.items():
                     if value["prediction"] == "Functional/Preference" or value["prediction"] == "Advertising" or value["prediction"] == "Analytics (Tracking)":
