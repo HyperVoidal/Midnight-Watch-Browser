@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QCheckBox
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 from PySide6.QtNetwork import QNetworkCookie, QNetworkCookieJar, QNetworkAccessManager
-from PySide6.QtWebEngineCore import QWebEngineCookieStore
+from PySide6.QtWebEngineCore import QWebEngineCookieStore, QWebEngineGlobalSettings
 from PySide6.QtWebChannel import QWebChannel
 from urllib.parse import urlparse
 from pathlib import Path
@@ -26,10 +26,6 @@ import hashlib
 from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
-
-# Suppress PySide6 SbkConverter warnings for extension enumeration
-#warnings.filterwarnings("ignore", message=".*SbkConverter::copyToPython.*")
-
 
 #Icon cache 
 icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
@@ -70,20 +66,21 @@ with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
     global toggles
     toggles = dict(json.load(f))
 
-if toggles["DNS-over-HTTPS"]:
-    #Forces the browser to resolve domains via HTTPS, hiding lookups from the firewall
-    sys.argv.append("--built-in-dns-lookup-enabled")
-    sys.argv.append("--dns-over-https-templates=https://cloudflare-dns.com")
-    print("DNS-over-HTTPS enabled")
-else:
-    print("DNS-over-HTTPS disabled")
-
 if toggles["Encrypted-Client-Hello"]:
-    #Hides the SNI (the website name) during the SSL handshake
+    # Force ECH feature enablement
     sys.argv.append("--enable-features=EncryptedClientHello")
+    sys.argv.append("--built-in-dns-lookup-enabled") 
+    
+    # Force the browser to process HTTPS records containing the ECH keys
+    sys.argv.append("--enable-switches-and-features=UseDnsHttpsSvcbAlpn")
+    
+    # CRITICAL: Prevent Chromium from using old TLS draft fallbacks 
+    sys.argv.append("--ssl-version-max=tls1.3")
     print("Encrypted-Client Hello enabled")
 else:
+    sys.argv.append("--disable-features=EncryptedClientHello")
     print("Encrypted-Client Hello disabled")
+
 
 if "Cookie-Prediction-Sensitivity" in toggles.keys():
     global sensitivity
@@ -97,7 +94,45 @@ if "Save-Tabs-On-Restart" in toggles.keys():
     global saveTabsOnRestart
     saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
 
+
 # ---- MAIN FUNCTIONS ----
+def settingsActivate():
+
+    if toggles["DNS-over-HTTPS"]:
+        #Instantiate the DnsMode helper structure
+        dns_settings = QWebEngineGlobalSettings.DnsMode()
+        
+        #Add provider template(s) as a list of strings
+        dns_settings.serverTemplates = ["https://cloudflare-dns.com{?dns}"]
+        
+        #Set the security level (SecureOnly or SecureWithFallback)
+        dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureWithFallback
+        
+        #Apply the settings globally to the underlying network stack
+        if QWebEngineGlobalSettings.setDnsMode(dns_settings):
+            print("DNS-over-HTTPS enabled successfully via Qt6 API")
+        else:
+            print("Failed to enable DoH: Check server templates or syntax")
+    else:
+        # Revert to standard system DNS settings
+        dns_settings = QWebEngineGlobalSettings.DnsMode()
+        dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.Off
+        QWebEngineGlobalSettings.setDnsMode(dns_settings)
+        print("DNS-over-HTTPS disabled")
+
+    if "Cookie-Prediction-Sensitivity" in toggles.keys():
+        global sensitivity
+        sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive, 3 for block everything with no limits. Anything past 1 may break persistent data
+
+    if "Cookie-Accept/Deny-On-Leave" in toggles.keys():
+        global siteLeaveCookies
+        siteLeaveCookies = toggles["Cookie-Accept/Deny-On-Leave"] #0 for remove all, 1 for accept all
+
+    if "Save-Tabs-On-Restart" in toggles.keys():
+        global saveTabsOnRestart
+        saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
+
+settingsActivate()
 
 #value clamper
 def clamp(value, min_value, max_value):
@@ -311,9 +346,30 @@ class objectMasterBridge(QObject):
                 except Exception as e:
                     print(f"Possible Security Alert, invalid image type? Error: {e}")
 
+            if dataHeader == "themeUpdate":
+                with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+                    ColourData = json.load(f)
+                
+                dictName = next(iter(dataValue))
+                ColourData[dictName] = dataValue[dictName]
+                print(ColourData[dictName])
+                
+                with open(f"{srcSourceDir}/data/colourProfiles.json", "w") as f:
+                    json.dump(ColourData, f, indent=4)
+
+                self.browser.colourMenu.clear()
+                self.browser.colourpalette_btn, self.browser.colourMenu = (self.browser.barManager.setup_colourPalette_button(ColourData))
+                
+                #select applied colour theme
+                self.browser.SelectColourTheme(dictName, ColourData)
+
             
+            #Return edited data to the json file
             with open (f"{srcSourceDir}/data/actionToggles.json", "w") as file_return:
                 json.dump(settingsData, file_return, indent=4)
+
+            #Trigger a re-update of remaining systems
+            settingsActivate()
 
     @Slot(str, result=str)
     def getData(self, key):
@@ -465,6 +521,14 @@ class objectMasterBridge(QObject):
 
         elif key == "AdvancedDateFormatting":
             return str(settingsData["Date-Display"][0])
+        
+        elif key == "ColourThemeNames":
+            with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+                datalist = json.load(f)
+            return json.dumps(datalist)
+        
+        elif key == "CurrentTheme":
+            return str(settingsData["Colour-Theme"])
             
         else:
             return f"Error: Key: {str(key)} not found"
@@ -628,7 +692,7 @@ class Browser(QMainWindow):
 
         with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
             Colourdata = dict(json.load(f))
-        self.colourPalette_btn, self.colourMenu = self.barManager.setup_colourPalette_button(Colourdata)
+        self.colourpalette_btn, self.colourMenu = self.barManager.setup_colourPalette_button(Colourdata)
         
 
 
@@ -651,7 +715,6 @@ class Browser(QMainWindow):
         EVAdInterceptor.deployPayload(browser=self.current_browser, profile=self.profile)
 
 
-
         #Actions list using commands
 
         #Quit command
@@ -664,7 +727,7 @@ class Browser(QMainWindow):
         tabclose_action = QAction("&Close &Tab", self)
         self.addAction(tabclose_action)
         tabclose_action.setShortcut(QKeySequence("Ctrl+W"))
-        tabclose_action.triggered.connect(self.close_tab)
+        tabclose_action.triggered.connect(lambda ok: self.close_tab())
 
         #Add tab command
         tabopen_action = QAction("&New &Tab", self)
@@ -687,10 +750,6 @@ class Browser(QMainWindow):
 
         #Run all browser startup triggers such as loading tabs from previous sessions, deploying js code, etc.
         self.onStartup()
-
-
-
-
 
 
 
@@ -886,7 +945,11 @@ class Browser(QMainWindow):
             else:
                 self.tabs.setTabIcon(tab_index, get_normIcon("tabIcon.png"))  # Set default icon if none
                 
-    def close_tab(self, index):
+    def close_tab(self, index=None):
+
+        if index is None:
+            index = self.tabs.currentIndex()
+
         if self.tabs.count() > 1:
             #manage all remaining cookies based on settings preferences
             target_tab = self.tabs.widget(index)
@@ -1185,7 +1248,12 @@ class Browser(QMainWindow):
 
     '''Colour Theme Management'''
     
-    def SelectColourTheme(self, profile, themes):
+    def SelectColourTheme(self, profile, themes=None):
+
+        #reload themes from source to allow updates
+        with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+            themes = json.load(f)
+
         self.tabs.tabBar().setStyleSheet("""
             QTabBar::tab {
                 height: 35px;
@@ -1195,7 +1263,7 @@ class Browser(QMainWindow):
         global eColsButton, eColsStyle
         self.selectedprofile = profile
 
-        self.colourPalette_btn.setToolTip(f"Colour Palettes (currently {profile})")
+        self.colourpalette_btn.setToolTip(f"Colour Palettes (currently {profile})")
 
         print(f"Colour Profile Switched to {profile}")
 
@@ -1223,7 +1291,7 @@ class Browser(QMainWindow):
                     obj.setIcon(QIcon(str(colouredpath)))
 
                     #adjust dropdown icon for colourpalettes
-                    if k == "colourPalette_btn":
+                    if k == "colourpalette_btn":
                         rgb_list = list((v[1:-1]).split(", "))
                         self.select_RGB_SL = (
                             clamp(int(rgb_list[0]), 0, 255),
@@ -1242,7 +1310,7 @@ class Browser(QMainWindow):
                             ) 
                         self.hexval = '#%02x%02x%02x' % self.rgb_tuple
                         #print(f"Adjusting colourPalette dropdown {self.hexval}, {self.rgb_tuple}, {self.light_rgb_tuple}")
-                        # Apply the styles specifically to the dropdown button (colourPalette_btn)
+                        # Apply the styles specifically to the dropdown button (colourpalette_btn)
                         obj.setStyleSheet(f"""
                             QToolButton {{
                                 background-color: {self.hexval};   /* Set background color */
@@ -1266,9 +1334,9 @@ class Browser(QMainWindow):
                 #select file from system and use PIL to change based on colour v, then s
                 pass
                 
-                if k == "pinTabs_btn":
-                    pinTabs_btn_col = buttoncolourer("pinTabs", v, "pinTabs")
-                    self.tabs.tabBar().pin_btn.setIcon(QIcon(str(pinTabs_btn_col)))
+                if k == "pintabs_btn":
+                    pintabs_btn_col = buttoncolourer("pintabs", v, "pintabs")
+                    self.tabs.tabBar().pin_btn.setIcon(QIcon(str(pintabs_btn_col)))
                     self.tabs.tabBar().update_pin_icon()
 
             #recolour other elements

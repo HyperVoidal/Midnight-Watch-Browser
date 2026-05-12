@@ -1,26 +1,25 @@
 {
     "Secured Blue": {
         "back_btn": "(75, 126, 215)",
-        "reload_btn": "(60, 100, 180)",
-        "colourPalette_btn": "(255, 200, 65)",
-        "newtab_btn": "(55, 95, 175)",
-        "home_btn": "(255, 235, 120)",
-        "forward_btn": "(75, 126, 215)",
         "bookmark_btn": "(255, 200, 65)",
-        "cookie_btn": "(210, 165, 50)",
-        "settings_btn": "(15, 30, 60)",
-        "url_bar": "(255, 255, 255)",
-        "tabs": "(15, 20, 45)",
-        "nav_bar": "(25, 45, 110)",
-        "tab_backer": "(25, 45, 110)",
         "bookmarks_bar": "(25, 45, 110)",
-        "pinTabs_btn": "(255, 200, 65)"
-        
+        "colourpalette_btn": "(255, 200, 65)",
+        "cookie_btn": "(210, 165, 50)",
+        "forward_btn": "(75, 126, 215)",
+        "home_btn": "(255, 235, 120)",
+        "nav_bar": "(25, 45, 110)",
+        "newtab_btn": "(55, 95, 175)",
+        "pintabs_btn": "(255, 200, 65)",
+        "reload_btn": "(60, 100, 180)",
+        "settings_btn": "(15, 30, 60)",
+        "tab_backer": "(25, 45, 110)",
+        "tabs": "(15, 20, 45)",
+        "url_bar": "(15, 20, 45)"
     },
-    "Pastel Breeze": { 
+    "Pastel Breeze": {
         "back_btn": "(182, 220, 241)",
         "reload_btn": "(245, 203, 225)",
-        "colourPalette_btn": "(255, 236, 209)",
+        "colourpalette_btn": "(255, 236, 209)",
         "newtab_btn": "(198, 223, 255)",
         "home_btn": "(255, 214, 235)",
         "forward_btn": "(205, 245, 212)",
@@ -32,13 +31,12 @@
         "nav_bar": "(255, 190, 190)",
         "tab_backer": "(255, 190, 190)",
         "bookmarks_bar": "(255, 190, 190)",
-        "pinTabs_btn": "(205, 186, 159)"
-
+        "pintabs_btn": "(205, 186, 159)"
     },
-    "Cyber Lime": { 
+    "Cyber Lime": {
         "back_btn": "(110, 255, 91)",
         "reload_btn": "(47, 255, 168)",
-        "colourPalette_btn": "(190, 255, 0)",
+        "colourpalette_btn": "(190, 255, 0)",
         "newtab_btn": "(0, 255, 77)",
         "home_btn": "(84, 215, 43)",
         "forward_btn": "(168, 255, 112)",
@@ -50,13 +48,12 @@
         "nav_bar": "(200, 255, 200)",
         "tab_backer": "(200, 255, 200)",
         "bookmarks_bar": "(200, 255, 200)",
-        "pinTabs_btn": "(170, 235, 0)"
-
-    }, 
+        "pintabs_btn": "(170, 235, 0)"
+    },
     "Mint": {
         "back_btn": "(170, 255, 214)",
         "reload_btn": "(140, 245, 200)",
-        "colourPalette_btn": "(120, 235, 185)",
+        "colourpalette_btn": "(120, 235, 185)",
         "newtab_btn": "(150, 255, 210)",
         "home_btn": "(190, 255, 230)",
         "forward_btn": "(160, 240, 200)",
@@ -68,12 +65,12 @@
         "nav_bar": "(10, 60, 20)",
         "tab_backer": "(10, 60, 20)",
         "bookmarks_bar": "(10, 60, 20)",
-        "pinTabs_btn": "(120, 235, 185)"
+        "pintabs_btn": "(120, 235, 185)"
     },
     "Solar": {
         "back_btn": "(255, 207, 72)",
         "reload_btn": "(255, 181, 44)",
-        "colourPalette_btn": "(255, 153, 0)",
+        "colourpalette_btn": "(255, 153, 0)",
         "newtab_btn": "(255, 227, 112)",
         "home_btn": "(255, 239, 168)",
         "forward_btn": "(255, 195, 66)",
@@ -85,12 +82,12 @@
         "nav_bar": "(100, 30, 30)",
         "tab_backer": "(100, 30, 30)",
         "bookmarks_bar": "(100, 30, 30)",
-        "pinTabs_btn": "(255, 153, 0)"
+        "pintabs_btn": "(255, 153, 0)"
     },
     "Coral": {
         "back_btn": "(255, 111, 97)",
         "reload_btn": "(255, 138, 120)",
-        "colourPalette_btn": "(255, 176, 148)",
+        "colourpalette_btn": "(255, 176, 148)",
         "newtab_btn": "(255, 151, 117)",
         "home_btn": "(255, 199, 190)",
         "forward_btn": "(255, 132, 105)",
@@ -102,14 +99,14 @@
         "nav_bar": "(75, 20, 15)",
         "tab_backer": "(75, 20, 15)",
         "bookmarks_bar": "(75, 20, 15)",
-        "pinTabs_btn": "(255, 176, 148)"
-    }, 
-    "Simple Dark Mode": { 
-        "back_btn": "(255, 255, 255)", 
-        "reload_btn": "(255, 255, 255)", 
-        "colourPalette_btn": "(255, 255, 255)", 
-        "newtab_btn": "(255, 255, 255)", 
-        "home_btn": "(255, 255, 255)", 
+        "pintabs_btn": "(255, 176, 148)"
+    },
+    "Simple Dark Mode": {
+        "back_btn": "(255, 255, 255)",
+        "reload_btn": "(255, 255, 255)",
+        "colourpalette_btn": "(255, 255, 255)",
+        "newtab_btn": "(255, 255, 255)",
+        "home_btn": "(255, 255, 255)",
         "forward_btn": "(255, 255, 255)",
         "bookmark_btn": "(255, 255, 255)",
         "cookie_btn": "(255, 255, 255)",
@@ -119,15 +116,14 @@
         "nav_bar": "(70, 70, 70)",
         "tab_backer": "(70, 70, 70)",
         "bookmarks_bar": "(70, 70, 70)",
-        "pinTabs_btn": "(255, 255, 255)"
-
+        "pintabs_btn": "(255, 255, 255)"
     },
-    "Simple Light Mode": { 
-        "back_btn": "(128, 128, 128)", 
-        "reload_btn": "(128, 128, 128)", 
-        "colourPalette_btn": "(128, 128, 128)", 
-        "newtab_btn": "(128, 128, 128)", 
-        "home_btn": "(128, 128, 128)", 
+    "Simple Light Mode": {
+        "back_btn": "(128, 128, 128)",
+        "reload_btn": "(128, 128, 128)",
+        "colourpalette_btn": "(128, 128, 128)",
+        "newtab_btn": "(128, 128, 128)",
+        "home_btn": "(128, 128, 128)",
         "forward_btn": "(128, 128, 128)",
         "bookmark_btn": "(128, 128, 128)",
         "cookie_btn": "(128, 128, 128)",
@@ -137,7 +133,23 @@
         "nav_bar": "(255, 255, 255)",
         "tab_backer": "(255, 255, 255)",
         "bookmarks_bar": "(255, 255, 255)",
-        "pinTabs_btn": "(128, 128, 128)"
-
+        "pintabs_btn": "(128, 128, 128)"
+    },
+    "rwar": {
+        "back_btn": "(75, 126, 215)",
+        "bookmark_btn": "(255, 200, 65)",
+        "bookmarks_bar": "(25, 45, 110)",
+        "colourpalette_btn": "(255, 200, 65)",
+        "cookie_btn": "(210, 165, 50)",
+        "forward_btn": "(75, 126, 215)",
+        "home_btn": "(255, 235, 120)",
+        "nav_bar": "(25, 45, 110)",
+        "newtab_btn": "(55, 95, 175)",
+        "pintabs_btn": "(255, 200, 65)",
+        "reload_btn": "(60, 100, 180)",
+        "settings_btn": "(15, 30, 60)",
+        "tab_backer": "(25, 45, 110)",
+        "tabs": "(15, 20, 45)",
+        "url_bar": "(255, 255, 255)"
     }
 }

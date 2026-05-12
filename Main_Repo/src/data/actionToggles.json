@@ -1,7 +1,7 @@
 {
     "DNS-over-HTTPS": true,
     "Encrypted-Client-Hello": true,
-    "Cookie-Prediction-Sensitivity": 1,
+    "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny-On-Leave": false,
     "Save-Tabs-On-Restart": false,
     "Tab-Position": "North",
@@ -18,7 +18,7 @@
         "dddd, d MMMM",
         true
     ],
-    "Time-Display": "hh:mm:ss",
+    "Time-Display": "hh:mm AP",
     "Name": "MidnightGuard",
     "Greeting": true,
     "Blur": 10,

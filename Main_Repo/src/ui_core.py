@@ -56,7 +56,7 @@ class BarManager:
             self.tabs.setTabBar(VerticalTabBar())
             self.tabs.tabBar().setExpanding(False)
             self.tabs.tabBar().setElideMode(Qt.ElideNone)
-            self.eColsButton.append("pinTabs_btn")
+            self.eColsButton.append("pintabs_btn")
 
 
         else:
@@ -271,8 +271,8 @@ class BarManager:
         self.parent.reload_btn.setIcon(get_normIcon("reload"))
 
     def setup_colourPalette_button(self, Colourdata):
-        self.colourPalette_btn = QToolButton(self.parent)
-        self.colourPalette_btn.setToolTip("Colour Palettes")
+        self.colourpalette_btn = QToolButton(self.parent)
+        self.colourpalette_btn.setToolTip("Colour Palettes")
         self.ColourMenu = QMenu(self.parent)
         
         for key in Colourdata.keys():
@@ -310,17 +310,17 @@ class BarManager:
         self.ColourMenu.addAction(Awidget_action)
 
         
-        self.colourPalette_btn.setMenu(self.ColourMenu)
-        self.colourPalette_btn.setIcon(get_normIcon("colourPalette"))
+        self.colourpalette_btn.setMenu(self.ColourMenu)
+        self.colourpalette_btn.setIcon(get_normIcon("colourpalette"))
 
         # When the main button is clicked, read the current selectedprofile at click time
-        self.colourPalette_btn.clicked.connect(lambda checked=False, d=Colourdata: self.parent.ToggleColourTheme(self.parent.selectedprofile, d))
+        self.colourpalette_btn.clicked.connect(lambda checked=False, d=Colourdata: self.parent.ToggleColourTheme(self.parent.selectedprofile, d))
 
-        self.colourPalette_btn.setPopupMode(QToolButton.MenuButtonPopup)
-        self.parent.nav_bar.addWidget(self.colourPalette_btn)
-        self.eColsButton.append("colourPalette_btn")
+        self.colourpalette_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        self.parent.nav_bar.addWidget(self.colourpalette_btn)
+        self.eColsButton.append("colourpalette_btn")
 
-        return self.colourPalette_btn, self.ColourMenu
+        return self.colourpalette_btn, self.ColourMenu
 
     def setup_engine_button(self, engines):
         self.engine_btn = QToolButton(self.parent)
@@ -523,7 +523,7 @@ class VerticalTabBar(QTabBar):
             }
         """)
 
-        self.default_pin_path = f"{srcSourceDir}/ui/icon_cache/pinTabs.png"
+        self.default_pin_path = f"{srcSourceDir}/ui/icon_cache/pintabs.png"
         self.pin_btn.setIconSize(QSize(24, 24))
 
     def toggle_pin(self, checked):

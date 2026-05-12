@@ -7,7 +7,24 @@
     <style>
         :root {
             --background-colour: 45, 45, 60;
-        }
+
+            /* Important text for question box display */
+            --text-save-tabs: "This feature automatically reopens your last session tabs upon restarting the browser. <break2> This is determined by the last window of the browser you opened. <break3> Note that native html pages such as the homepage and settings menu are exempt from the loader.";
+            --text-name-display: "Sets your internally recognised name. This works primarily wiht the greeting display. <break2> Press enter to confirm.";
+            --text-display-greeting: "Displays a greeting on the home page screen based on the time of day and your set name.";
+            --text-simple-date-display: "Dropdown to determine what date formatting is displayed on the homepage. <break2> Options (with examples) are: <break1> - Global (e.g. 15/01/26) <break1> - US (e.g. 01/15/26) <break1> - ISO (e.g. 26-01-15) <break1> - Long Form (e.g. Thursday, January 15, 2026) <break1> - Minimalist (e.g. 15 Jan 2026) <break2> Note that years are only shown if the option below is enabled.";
+            --text-display-year: "Appends a year item to the end of whatever date format you select. <break2> Designed primarily for dropdown options but is theoretically compatible with advanced date formatting.";
+            --text-adv-date: "Allows for editing of the date format to a completely custom option. <break2> Press enter to apply. <break2> Note: Year display option may break with custom work. <break2> Syntax: <break1> - d: Day number with no leading zero (e.g 1) <break1> - dd: Day number with leading zero (e.g. 01) <break1> - ddd: Abbreviated localized day name (e.g. “Mon”) <break1> - dddd: Long localized day name (e.g. “Monday”) <break1> - M: Month number with no leading zero (e.g. 1) <break1> - MM:Month number with leading zero (e.g. 01) <break1> - MMM:Abbreviated localized month name (e.g. “Jan”) <break1> - MMMM:Long localized month name (e.g. “January”) <break1> - yy:Year as two digit number (e.g. 99) <break1> - yyyy: Year as four digit number (e.g. 1999). Can be a negative number for BCE years. <break2> Note that some characters are blocked for security purposes. <break1> Available are: <break1>- / . ,";
+            --text-time-display: "A customisable time display system that allows for full control over what type of formatting you'd like. <break2> Press enter to confirm. <break2> Syntax: <break1> - h: Hours with no leading zero (e.g. 1) <break1> - hh: Hours with leading zero (e.g. 01) <break1> - m: Minutes with no leading zero (e.g. 9) <break1> - mm: Minutes with leading zero (e.g. 09) <break1> - s: Seconds with no leading zero (e.g. 6) <break1> - ss: Seconds with leading zero (e.g. 06) <break1> - AP: Add to the end to display time as 12 hr rather than 24 hr format. <break2> Note that most characters are blocked for security";
+            --text-tab-bar-pos: "A dropdown menu to determine the position of the tab bar in the layout. <break2> This setting requires a restart to take effect. <break2> Note: <break1> - All positions are locked to be directly next to displayed web content due to rendering limitations.";
+            --text-bar-positions: "Drag and drop to move each box to a different category. <break2> The arrangement of the blocks in the menu determines their arrangement from top to bottom in each category. <break2> Note that this requires a restart for settings to take effect. <break2> Search refers to the navigation bar, bookmarks to the bookmarks bar, and status to the status bar.";
+            --text-blur-strength: "Drag the slider around to set the strength of the blur effect applied to the background image of the homepage. <break2> A higher value means more of a blurring effect.";
+            --text-image-display: "Drag and drop an image from your file system to the dotted area, or otherwise interact with the clickable button to open the file manager dialog. <break2> Select an image, and we'll handle the rest for you! Your image file will not be moved. <break2> Remember to check the local browser storage for images you've added in before!";
+            --text-cookieSensitivity: "Drag the slider to one of four points to set the strength of the internal cookie filters for the browser. <break2> <No Blocking> has no cookie filtering and automatically accepts them as most browsers do. <break2> <Midground Blocking> filters known spamware and tracking cookies automatically, and leaves the rest to the cookie dropdown for you to decide whether to accept or not. This is the recommended option for conventional browsing if you want to keep access to websites. <break2> <Extreme> will begin removing cookies more aggressively, though will attempt to spare important ones. Some may be caught in the process and break some websites. <break2> <ULTRA(cookie)KILL> will destroy all cookies immediately, regardless of origin or function. <break2> Note: <break1> - Cookie filter settings do not apply retroactively, you cannot enable 3 to clear previously stored cookies.";
+            --text-DNS_HTTPS: "Enable this to enable DNS over HTTPS encryption. <break2> This setting automatically encrypts domain headers sent by the browser, allowing for improved security by making it harder for public wifi networks to see or potentially hijack searches. <break2> This setting requires a restart to take effect. <break2> Note that disabling the setting does not disrupt secure TCP connections, so if the setting is toggled while streaming content, the content stream will retain the old system until reloaded.";
+            --text-EncryptedClientHello: "Enable this to enable Encrypted Client Hello systems. <break2> This setting encrypts the starting message this browser and a website will exchange to initiate connections, thereby stopping network observers like Internet Service Providers to see which websites you visit.";
+            --text-TabClose-CookieAction: "When disabled, closing a tab will set the browser to automatically delete all cookies remaining in the queue. <break2> When enabled, closing a tab will set the browser to automatically save all remaining cookies in the queue. <break2> We recommend keeping this disabled.";
+            }
         
         html, body {
             margin: 0;
@@ -33,6 +50,7 @@
             height: 100vh;
             width: 100vw;
             z-index: 2;
+            position: relative;
         }
 
         .nav-container {
@@ -61,6 +79,47 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             overflow-y: auto;
             min-height: 0;
+            min-width: 0;
+        }
+
+        .info-panel {
+            position: absolute;
+            right: 20px;       /* Spacing from the right edge */
+            top: 20px;
+            bottom: 20px;
+            width: 33%;
+            background: rgb(50, 50, 65);
+            border: 1px solid #272727;
+            border-radius: 16px; /* Rounded edges top to bottom */
+            padding: 20px;
+            margin-right: 20px;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.3);
+            z-index: 10;        /* Sits above the scrollable content */
+            pointer-events: none; /* Allows clicking through to settings until active */
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s ease;
+        }
+
+        .info-panel.active {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            color: white;
+            /* Optional: hide the card initially or keep it as a placeholder */
+            transition: all 0.3s ease;
+        }
+        
+        .info-card p {
+            font-family: sans-serif;
+            font-size: 15px;
         }
         
         .row {
@@ -71,8 +130,27 @@
             margin-bottom: 20px;
             padding: 8px 0;
         }
-        
 
+
+        .control-row {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* themes version of control row to fix issues with the layout */
+        #themes .control-row {
+            width: 100%;
+            align-items: stretch;
+        }
+
+        /* Align box and input side-by-side */
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+
+        
         .nav-item { 
             padding: 23px;
             padding-right: 28px; /* Account for italics making text look slightly too far left */ 
@@ -141,6 +219,28 @@
             color: white;
             text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
             font-weight: bolder;
+        }
+
+        .question-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            background-color: #3f81ff;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 4px;
+            flex-shrink: 0;
+            transition: transform 0.3s ease-in-out;
+            box-sizing: border-box; 
+        }
+
+
+        .question-box:hover{
+            transform: scale(1.2);
+            background-color: #6097fd;
         }
 
         h1 {
@@ -274,6 +374,7 @@
             color: white;
             user-select: none;
             gap: 15px;
+            line-height: 1;
         }
 
         /* Hide the browser's default checkbox */
@@ -332,6 +433,21 @@
             font-family: sans-serif;
             font-style: normal;
             flex: 2;
+        }
+
+        .info-card .dropdown-container {
+            position: relative;
+            width: 100%;
+            font-family: sans-serif;
+            font-style: normal;
+        }
+
+        .input-group .dropdown-container {
+            position: relative;
+            font-family: sans-serif;
+            font-style: normal;
+            
+            flex: 0 0 calc(25% - 15px); 
         }
 
         .dropdown-head {
@@ -396,6 +512,11 @@
         .input-wrapper {
             position: relative;
             width: 200px;
+        }
+
+        .info-card .input-wrapper {
+            position: relative;
+            width: 100%;
         }
 
         .custom-input {
@@ -484,13 +605,30 @@
         /* RGB & Buttons */
 
         input[type="color"] {
+            appearance: none;
+            -webkit-appearance: none;
+
+            width: 42px;
+            height: 42px;
+
             border: none;
-            width: 50px;
-            height: 50px;
+            border-radius: 10px;
+
+            overflow: hidden;
+            background: transparent;
+
             cursor: pointer;
-            background: none;
-            border-radius: 5px;
         }
+
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 10px;
+        }
+
         .colour-group { 
             display: flex; 
             align-items: center; 
@@ -498,6 +636,8 @@
             width: 50%;
             flex-direction: row;
             justify-content: center;
+            padding: 20px;
+            padding-top:0;
         }
 
         .colour-group-spacer {
@@ -511,7 +651,61 @@
             display: flex; 
             flex-direction: row;
             align-items: center; 
+        }
+
+        /* Themes tab controller */
+        /* Themes layout */
+
+        /* Main themes content */
+        .themes-layout {
+            display: flex;
             gap: 40px;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .theme-main {
+            flex: 1;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .theme-sidebar {
+            width: 280px;
+            background: rgb(50, 50, 65);
+            border: 1px solid #272727;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.3);
+
+            position: sticky;
+            top: 20px;
+
+            height: fit-content;
+            flex-shrink: 0;
+        }
+
+        /* Hide sidebar unless themes tab active */
+        #themes:not(.active) .theme-sidebar {
+            display: none;
+        }  
+
+        /* Button to actually apply themes */
+        .apply-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: #3f81ff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 15px;
+            transition: background 0.2s;
+        }
+
+        .apply-btn:hover {
+            background-color: #6097fd;
         }
 
 
@@ -565,6 +759,36 @@
             opacity: 0.4;
         }
 
+        /* Scrollbar System*/
+
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+
+        /* Background track */
+        ::-webkit-scrollbar-track {
+            background: rgb(45, 45, 60);
+            border-radius: 10px;
+        }
+
+        /* Draggable scrollbar handle */
+        ::-webkit-scrollbar-thumb {
+            background: rgb(85, 85, 105);
+            border-radius: 10px;
+            border: 2px solid rgb(45, 45, 60);
+        }
+
+        /* Hover effect */
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgb(110, 110, 135);
+        }
+
+        /* Remove corner box */
+        ::-webkit-scrollbar-corner {
+            background: transparent;
+        }
+
         
 
     </style>
@@ -572,355 +796,180 @@
 </head>
 <body>
     <div class="background-wrapper">
-        <h2>Settings Menu</h2>
+        <!-- Maybe one day I'll put something here... This is not that day-->
     </div>
         <div class="full-screen-settings">
-        <aside class="nav-container">
-            <div class="nav-item active" onclick="switchTab(this, 'general')">General</div>
-            <div class="nav-item" onclick="switchTab(this, 'themes')">Themes</div>
-            <div class="nav-item" onclick="switchTab(this, 'privacy')">Privacy</div>
-        </aside>
+            <aside class="nav-container">
+                <div class="nav-item active" onclick="switchTab(this, 'general')">General</div>
+                <div class="nav-item" onclick="switchTab(this, 'themes')">Themes</div>
+                <div class="nav-item" onclick="switchTab(this, 'privacy')">Privacy</div>
+            </aside>
 
-        <main class="settings-content">
+            <main class="settings-content">
 
 
-            <div id="general", class="tab-pane active">
-                <h2>General</h2>
-                <div class="title-spacer"></div>
+                <div id="general" class="tab-pane active">
+                    <h2>General</h2>
+                    <div class="title-spacer"></div>
 
-                <div class="control-row">
-                    <label>Name</label>
-                    <div class="input-wrapper">
-                        <input type="text" class="custom-input" placeholder="Type here..." id="nameInput">
-                        <span class="input-focus-bg"></span>
-                    </div>
-                </div>
-                
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-                
-                <div class="control-row">
-                    <label class="checkbox-container">
-                        <input type="checkbox" id="SaveTabsOnReload" checked>
-                        <span class="checkmark"></span>
-                        Save Tabs on Browser Reload
-                    </label>
-                </div>
-
-                <div class="text-spacer"></div>
-
-                <div class="control-row">
-                    <label class="checkbox-container">
-                        <input type="checkbox" id="DisplayGreeting" checked>
-                        <span class="checkmark"></span>
-                        Display Greeting
-                    </label>
-                </div>
-
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-                
-                <div class="control-row">
-                    <div class="dropdown-container" data-setting="Date Display" id="Date Display">
-                        <label>Date Display</label>
-                        <div class="dropdown-head" onclick="toggleDropdown(this)">
-                            <span>Date Display</span>
-                            <i class="arrow-down"></i>
+                    <div class="control-row">
+                        <label>Name</label>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="text" class="custom-input" placeholder="Type here..." id="nameInput">
+                                <span class="input-focus-bg"></span>
+                            </div>
+                            <a href="#" class="question-box" onclick="showInfo('Name Display', 'name-display')">?</a>
                         </div>
-                        <div class="dropdown-list">
-                            <div class="dropdown-item" onclick="selectOption(this)">Global</div>
-                            <div class="dropdown-item" onclick="selectOption(this)">US</div>
-                            <div class="dropdown-item" onclick="selectOption(this)">ISO</div>
-                            <div class="dropdown-item" onclick="selectOption(this)">Long-Form</div>
-                            <div class="dropdown-item" onclick="selectOption(this)">Minimalist</div>
-                        </div>                  
+                    </div>
+                    
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+                    
+                    <div class="control-row">
+                        <div class="input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="SaveTabsOnReload" checked>
+                                <span class="checkmark"></span>
+                                Save Tabs on Browser Reload
+                                <a href="#" class="question-box" onclick="showInfo('Save Tabs', 'save-tabs')">?</a>
+                            </label>
+                        </div>
                     </div>
 
-                    <div class="text-spacer"></div>
-
-                    <label class="checkbox-container">
-                        <input type="checkbox" id="yearInDate" checked>
-                        <span class="checkmark"></span>
-                        Show Year
-                    </label>
-                    
                     <div class="text-spacer"></div>
 
                     <div class="control-row">
-                        <label>Advanced Date Formatting</label>
-                        <div class="input-wrapper">
-                            <input type="text" class="custom-input" placeholder="Date Formatting" id="advDate">
-                            <span class="input-focus-bg"></span>
+                        <div class="input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="DisplayGreeting" checked>
+                                <span class="checkmark"></span>
+                                Display Greeting
+                                <a href="#" class="question-box" onclick="showInfo('Display Greeting', 'display-greeting')">?</a>
+                            </label>
                         </div>
                     </div>
-                </div>
-                            
 
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+                    
+                    <div class="control-row">
+                        <label>Date Display</label>
+                        <div class="input-group">
+                            <div class="dropdown-container" data-setting="Date Display" id="Date Display">
+                                <div class="dropdown-head" onclick="toggleDropdown(this)">
+                                    <span>Date Display</span>
+                                    <i class="arrow-down"></i>
+                                </div>
+                                <div class="dropdown-list">
+                                    <div class="dropdown-item" onclick="selectOption(this)">Global</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">US</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">ISO</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">Long-Form</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">Minimalist</div>
+                                </div>                  
+                            </div>
+                            <a href="#" class="question-box" onclick="showInfo('Simple Date Display', 'simple-date-display')">?</a>
+                        </div>
 
-                <div class="control-row">
-                    <label>Time Display</label>
-                    <div class="input-wrapper">
-                        <input type="text" class="custom-input" placeholder="HH:mm", id="timeInput">
-                        <span class="input-focus-bg"></span>
+                        <div class="text-spacer"></div>
+                        <div class="input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="yearInDate" checked>
+                                <span class="checkmark"></span>
+                                Show Year
+                                <a href="#" class="question-box" onclick="showInfo('Year Display', 'display-year')">?</a>
+                            </label>
+                        </div>
+                        
+                        <div class="text-spacer"></div>
+
+                        <div class="control-row">
+                            <label>Advanced Date Formatting</label>
+                            <div class="input-group">
+                                <div class="input-wrapper">
+                                    <input type="text" class="custom-input" placeholder="Date Formatting" id="advDate">
+                                    <span class="input-focus-bg"></span>
+                                </div>
+                                <a href="#" class="question-box" onclick="showInfo('Advanced Date Formatting', 'adv-date')">?</a>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                                
 
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
 
-                <!-- Tab Bar Position Controller-->
-                <div class="control-row">
-                    <div class="dropdown-container" data-setting="Tab Bar Pos" id="Tab Bar Pos">
+                    <div class="control-row">
+                        <label>Time Display</label>
+                        <div class="input-group">
+                            <div class="input-wrapper">
+                                <input type="text" class="custom-input" placeholder="HH:mm", id="timeInput">
+                                <span class="input-focus-bg"></span>
+                            </div>
+                            <a href="#" class="question-box" onclick="showInfo('Time Display', 'time-display')">?</a>
+                        </div>
+                    </div>
+
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+
+                    <!-- Tab Bar Position Controller-->
+                    <div class="control-row">
                         <label>Tab Bar Position</label>
-                        <div class="dropdown-head" onclick="toggleDropdown(this)">
-                            <span>Tab Bar Position</span>
-                            <i class="arrow-down"></i>
-                        </div>
-                        <div class="dropdown-list">
-                            <div class="dropdown-item" onclick="selectOption(this)">Top</div>
-                            <div class="dropdown-item" onclick="selectOption(this)">Bottom</div>
-                            <div class="dropdown-item" onclick="selectOption(this)">Vertical Left</div>
-                            <div class="dropdown-item" onclick="selectOption(this)">Vertical Right</div>
-                        </div>                  
-                    </div>
-                </div>
-
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-                
-                <div class="control-row">
-                    <h4>Bar Location Manager</h4>
-                    <div class="text-spacer"></div>
-                    <div class="hierarchy-editor", id="TabStack">
-                        <!-- Top Bars -->
-                        <div class="bar-section">
-                            <label>Top Bars</label>
-                            <div class="drop-zone" id="Top-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
-                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="nav_bar">Search</div>
+                        <div class="input-group">
+                            <div class="dropdown-container" data-setting="Tab Bar Pos" id="Tab Bar Pos">
+                                <div class="dropdown-head" onclick="toggleDropdown(this)">
+                                    <span>Tab Bar Position</span>
+                                    <i class="arrow-down"></i>
+                                </div>
+                                <div class="dropdown-list">
+                                    <div class="dropdown-item" onclick="selectOption(this)">Top</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">Bottom</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">Vertical Left</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">Vertical Right</div>
+                                </div>                  
                             </div>
-                        </div>
-
-                        <!-- Bottom Bars -->
-                        <div class="bar-section">
-                            <label>Bottom Bars</label>
-                            <div class="drop-zone" id="Bottom-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
-                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="bookmarks_bar">Bookmarks</div>
-                            </div>
-                        </div>
-
-                        <!-- Hidden -->
-                        <div class="bar-section">
-                            <label>Hidden</label>
-                            <div class="drop-zone" id="Hidden-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
-                                <div class="bar-item" draggable="true" ondragstart="drag(event)" id="status_bar">Status Info</div> <!-- Potential Status Bar System, if I have time to add later-->
-                            </div>
+                            <a href="#" class="question-box" onclick="showInfo('Tab Bar Position', 'tab-bar-pos')">?</a>
                         </div>
                     </div>
-                </div>
-
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-
-                <div class="control-row">
-                    <label>Blur Control</label>
-                    <div class="slider-wrapper">
-                        <input type="range" min="0", max="500" step="1" class="slider" list="tickmarks" id="blur-slider">
-                        
-                        <!-- Tick marks / Labels -->
-                        <datalist id="tickmarks">
-                            <option value="0" label="0%"></option>
-                            <option value="100" label="20%"></option>
-                            <option value="200" label="40%"></option>
-                            <option value="300" label="60%"></option>
-                            <option value="400" label="80%"></option>
-                            <option value="500" label="100%"></option>
-                        </datalist>
-
-                    </div>
-                </div>
-
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-                
-                <label>New Tab Background Image</label>
-                <div class="text-spacer"></div>
-                <div class="control-row">
-                    <div id="bg-drop-area">
-                        <form class="bgDragDropForm">
-                            <p>Drag and Drop or Click to Open Files</p>
-                            <input type="file" id="fileElem" accept="image/*" onchange="handleFiles(this.files)">
-                            <label class="button" for="fileElem">Select image...</label>
-                        </form>
-                        <div class='child-div' id="gallery"></div>
-                    </div>
-                </div>
-
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-
-                
-            </div>
-
-
-            <div id="themes" class="tab-pane">
-                <h2>Theme Control</h2>
-                <div class="title-spacer"></div>
-                <div class="control-row">
-
-                    <h5>Navigation Buttons</h5>
-                    <div class="text-spacer"></div>
-                    <div class="text-spacer"></div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>back_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputBACK">
-                                <span class="colour-group-font" id="hexValueBACK">#3f51b5</span>
-                            </div>
-                        </div>
-                        
-                        <div class="colour-group-spacer">
-                            <label>forward_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputFORWARD">
-                                <span class="colour-group-font" id="hexValueFORWARD">#3f51b5</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="text-spacer"></div>
-                    <div class="text-spacer"></div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>newtab_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputNEWTAB">
-                                <span class="colour-group-font" id="hexValueNEWTAB">#3f51b5</span>
-                            </div>
-                        </div>
-
-                        <div class="colour-group-spacer">
-                            <label>home_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputHOME">
-                                <span class="colour-group-font" id="hexValueHOME">#3f51b5</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="text-spacer"></div>
-                    <div class="text-spacer"></div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>reload_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputRELOAD">
-                                <span class="colour-group-font" id="hexValueRELOAD">#3f51b5</span>
-                            </div>
-                        </div>
-
-                        <div class="colour-group-spacer">
-                            <label>settings_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputSETTINGS">
-                                <span class="colour-group-font" id="hexValueSETTINGS">#3f51b5</span>
-                            </div>
-                        </div>
-                    </div>
-
 
                     <div class="text-spacer"></div>
                     <hr class="separator-left">
                     <div class="text-spacer"></div>
-
-
-                    <h5>Dropdown Controllers</h5>
-                    <div class="text-spacer"></div>
-                    <div class="text-spacer"></div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>colourPalette_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputPALETTE">
-                                <span class="colour-group-font" id="hexValuePALETTE">#3f51b5</span>
-                            </div>
+                    
+                    <div class="control-row">
+                        <div class="input-group">
+                            <h4>Bar Location Manager</h4>
+                            <a href="#" class="question-box" onclick="showInfo('Bar Position Manager', 'bar-positions')">?</a>
                         </div>
-
-                        <div class="colour-group-spacer">
-                            <label>cookie_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputCOOKIE">
-                                <span class="colour-group-font" id="hexValueCOOKIE">#3f51b5</span>
+                        <div class="hierarchy-editor", id="TabStack">
+                            <!-- Top Bars -->
+                            <div class="bar-section">
+                                <label>Top Bars</label>
+                                <div class="drop-zone" id="Top-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                    <div class="bar-item" draggable="true" ondragstart="drag(event)" id="nav_bar">Search</div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
 
-
-                    <div class="text-spacer"></div>
-                    <hr class="separator-left">
-                    <div class="text-spacer"></div>
-
-
-                    <h5>Bar Controllers</h5>
-                    <div class="text-spacer"></div>
-                    <div class="text-spacer"></div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>url_bar</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputURLBAR">
-                                <span class="colour-group-font" id="hexValueURLBAR">#3f51b5</span>
+                            <!-- Bottom Bars -->
+                            <div class="bar-section">
+                                <label>Bottom Bars</label>
+                                <div class="drop-zone" id="Bottom-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                    <div class="bar-item" draggable="true" ondragstart="drag(event)" id="bookmarks_bar">Bookmarks</div>
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="colour-group-spacer">
-                            <label>nav_bar</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputNAVBAR">
-                                <span class="colour-group-font" id="hexValueNAVBAR">#3f51b5</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>tabs</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputTABS">
-                                <span class="colour-group-font" id="hexValueTABS">#3f51b5</span>
-                            </div>
-                        </div>
-
-                        <div class="colour-group-spacer">
-                            <label>tab_backer</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputBACKER">
-                                <span class="colour-group-font" id="hexValueBACKER">#3f51b5</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>bookmarks_bar</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputBOOKBAR">
-                                <span class="colour-group-font" id="hexValueBOOKBAR">#3f51b5</span>
+                            <!-- Hidden -->
+                            <div class="bar-section">
+                                <label>Hidden</label>
+                                <div class="drop-zone" id="Hidden-Stack" ondragover="allowDrop(event)" ondrop="drop(event)">
+                                    <div class="bar-item" draggable="true" ondragstart="drag(event)" id="status_bar">Status Info</div> <!-- Potential Status Bar System, if I have time to add later-->
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -929,87 +978,340 @@
                     <hr class="separator-left">
                     <div class="text-spacer"></div>
 
-
-                    <h5>Misc</h5>
-                    <div class="text-spacer"></div>
-                    <div class="text-spacer"></div>
-
-                    <div class="colour-group">
-                        <div class="colour-group-spacer">
-                            <label>bookmark_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputBOOKMARK">
-                                <span class="colour-group-font" id="hexValueBOOKMARK">#3f51b5</span>
-                            </div>
+                    <div class="control-row">
+                        <div class="input-group">
+                            <label>Blur Control</label>
+                            <a href="#" class="question-box" onclick="showInfo('Blur Strength', 'blur-strength')">?</a>
                         </div>
+                        <div class="slider-wrapper">
+                            <input type="range" min="0", max="500" step="1" class="slider" list="tickmarks" id="blur-slider">
+                            
+                            <!-- Tick marks / Labels -->
+                            <datalist id="tickmarks">
+                                <option value="0" label="0%"></option>
+                                <option value="100" label="20%"></option>
+                                <option value="200" label="40%"></option>
+                                <option value="300" label="60%"></option>
+                                <option value="400" label="80%"></option>
+                                <option value="500" label="100%"></option>
+                            </datalist>
 
-                        <div class="colour-group-spacer">
-                            <label>tabPin_btn</label>
-                            <div class="colour-group-mini-spacer">
-                                <input type="color" value="#3f51b5" id="rgbInputPINTAB">
-                                <span class="colour-group-font" id="hexValuePINTAB">#3f51b5</span>
-                            </div>
                         </div>
                     </div>
+
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+                    
+                    <div class="input-group">
+                        <label>New Tab Background Image</label>
+                        <a href="#" class="question-box" onclick="showInfo('Background Image Selector', 'image-display')">?</a>
+                    </div>
+                    <div class="text-spacer"></div>
+                    <div class="control-row">
+                        <div id="bg-drop-area">
+                            <form class="bgDragDropForm">
+                                <p>Drag and Drop or Click to Open Files</p>
+                                <input type="file" id="fileElem" accept="image/*" onchange="handleFiles(this.files)">
+                                <label class="button" for="fileElem">Select image...</label>
+                            </form>
+                            <div class='child-div' id="gallery"></div>
+                        </div>
+                    </div>
+
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+
                     
                 </div>
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-            </div>
 
 
-            <div id="privacy" class="tab-pane">
-                <h2>Privacy</h2>
-                <div class="title-spacer"></div>
-                <div class="control-row">
-                    <label>Cookie Filter Sensitivity</label>
-                    <div class="slider-wrapper">
-                        <input type="range" min="0" max="3" step="1" class="slider" list="tickmarks" id="cookieFilterSens">
-                        
-                        <!-- Tick marks / Labels -->
-                        <datalist id="tickmarks">
-                            <option value="0" label="No Blocking"></option>
-                            <option value="1" label="Midground Blocking"></option>
-                            <option value="2" label="Extreme"></option>
-                            <option value="3" label="ULTRA(cookie)KILL"></option>
-                        </datalist>
+                <div id="themes" class="tab-pane">
+                    <div class="themes-layout">
+                        <div class="theme-main">
+                            <h2>Theme Control</h2>
+                            <div class="title-spacer"></div>
+                            <div class="control-row">
 
+                                <h5>Navigation Buttons</h5>
+                                <div class="text-spacer"></div>
+
+                                <div class="colour-group">
+                                    <div class="colour-group-spacer">
+                                        <label>back_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputBACK_BTN">
+                                            <span class="colour-group-font" id="hexValueBACK_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="colour-group-spacer">
+                                        <label>forward_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputFORWARD_BTN">
+                                            <span class="colour-group-font" id="hexValueFORWARD_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="colour-group">
+                                    <div class="colour-group-spacer">
+                                        <label>newtab_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputNEWTAB_BTN">
+                                            <span class="colour-group-font" id="hexValueNEWTAB_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="colour-group-spacer">
+                                        <label>home_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputHOME_BTN">
+                                            <span class="colour-group-font" id="hexValueHOME_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="colour-group">
+                                    <div class="colour-group-spacer">
+                                        <label>reload_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputRELOAD_BTN">
+                                            <span class="colour-group-font" id="hexValueRELOAD_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="colour-group-spacer">
+                                        <label>settings_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputSETTINGS_BTN">
+                                            <span class="colour-group-font" id="hexValueSETTINGS_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                <div class="text-spacer"></div>
+                                <hr class="separator-left">
+                                <div class="text-spacer"></div>
+
+
+                                <h5>Dropdown Controllers</h5>
+                                <div class="text-spacer"></div>
+
+                                <div class="colour-group">
+                                    <div class="colour-group-spacer">
+                                        <label>colourPalette_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputCOLOURPALETTE_BTN">
+                                            <span class="colour-group-font" id="hexValuePALETTE_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="colour-group-spacer">
+                                        <label>cookie_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputCOOKIE_BTN">
+                                            <span class="colour-group-font" id="hexValueCOOKIE_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                <div class="text-spacer"></div>
+                                <hr class="separator-left">
+                                <div class="text-spacer"></div>
+
+
+                                <h5>Bar Controllers</h5>
+                                <div class="text-spacer"></div>
+
+                                <div class="colour-group">
+                                    <div class="colour-group-spacer">
+                                        <label>url_bar</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputURL_BAR">
+                                            <span class="colour-group-font" id="hexValueURL_BAR">#3f51b5</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="colour-group-spacer">
+                                        <label>nav_bar</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputNAV_BAR">
+                                            <span class="colour-group-font" id="hexValueNAV_BAR">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="colour-group">
+                                    <div class="colour-group-spacer">
+                                        <label>tabs</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputTABS">
+                                            <span class="colour-group-font" id="hexValueTABS">#3f51b5</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="colour-group-spacer">
+                                        <label>tab_backer</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputTAB_BACKER">
+                                            <span class="colour-group-font" id="hexValueTAB_BACKER">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="colour-group">
+                                    <div class="colour-group-spacer">
+                                        <label>bookmarks_bar</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputBOOKMARKS_BAR">
+                                            <span class="colour-group-font" id="hexValueBOOKMARKS_BAR">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="text-spacer"></div>
+                                <hr class="separator-left">
+                                <div class="text-spacer"></div>
+
+
+                                <h5>Misc</h5>
+                                <div class="text-spacer"></div>
+
+                                    <div class="colour-group-spacer">
+                                        <label>bookmark_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputBOOKMARK_BTN">
+                                            <span class="colour-group-font" id="hexValueBOOKMARK_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="colour-group-spacer">
+                                        <label>tabPin_btn</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputPINTABS_BTN">
+                                            <span class="colour-group-font" id="hexValuePINTABS_BTN">#3f51b5</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                            </div>
+
+                        <aside class="theme-sidebar">
+                            <div class="info-card">
+                                <h5>Colour Theme Editor</h5>
+                                <p>Adjust your UI accents and click apply to save.</p>
+                                <div class="dropdown-container" data-setting="Colour_Theme_List" id="ColourThemeList">
+                                    <label>Colour Theme List</label>
+                                    <div class="dropdown-head" onclick="toggleDropdown(this)">
+                                        <span>Colour Theme List</span>
+                                        <i class="arrow-down"></i>
+                                    </div>
+                                    <div class="dropdown-list">
+                                        <div class="dropdown-item" onclick="selectOption(this)">SecuredBlue</div> <!--Note this is just a placeholder-->
+                                    </div>                  
+                                </div>
+                                <div class="text-spacer"></div>
+                                <div class="input-wrapper">
+                                    <input type="text" class="custom-input" placeholder="Enter New Name Here", id="ColourThemeName">
+                                    <span class="input-focus-bg"></span>
+                                </div>
+                                <button class="apply-btn" onclick="applyThemeColors()">Apply Theme</button>
+                                <div class="text-spacer"></div>
+                                <div class="text-spacer"></div>
+                                <div class="text-spacer"></div>
+                                <div class="text-spacer"></div>
+                                <h4>Notes on the Editor</h4>
+                                <p> - Write in the name of an existing theme to overwrite it with your new theme!</p>
+                                <p> - Write in a new name (&lt32 characters) to create a new theme entirely with your colours!</p> <!-- This shouldn't cause an error but I should maybe fix it -->
+                                <p> - Enter no name, and your theme will be automatically saved as CustomTheme</p>
+                                <p> - Be aware!! Characters such as &gt, &lt, and / are automatically filtered for security</p>
+                            </div>
+                        </aside>
                     </div>
                 </div>
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-                <div class="control-row">
-                    <label class="checkbox-container">
-                        <input type="checkbox" id="DNSoverHTTPS" checked>
-                        <span class="checkmark"></span>
-                        DNS over HTTPS
-                    </label>
-                </div>
-                <div class="text-spacer"></div>
-                <div class="control-row">
-                    <label class="checkbox-container">
-                        <input type="checkbox" id="EncryptedClientHello" checked>
-                        <span class="checkmark"></span>
-                        Encrypted Client Hello
-                    </label>
-                </div>
-                <div class="text-spacer"></div>
-                <div class="control-row">
-                    <label class="checkbox-container">
-                        <input type="checkbox" id ="TabCloseCookieAction" checked>
-                        <span class="checkmark"></span>
-                        Automatic Cookie Accept on Tab Close
-                    </label>
-                </div>
-                <div class="text-spacer"></div>
-                <hr class="separator-left">
-                <div class="text-spacer"></div>
-            </div>
 
 
-        </main>
+                <div id="privacy" class="tab-pane">
+                    <h2>Privacy</h2>
+                    <div class="title-spacer"></div>
+                    <div class="control-row">
+                        <div class="input-group">
+                            <label>Cookie Filter Strength</label>
+                            <a href="#" class="question-box" onclick="showInfo('Cookie Filter Strength', 'cookieSensitivity')">?</a>
+                        </div>
+                        <div class="slider-wrapper">
+                            <input type="range" min="0" max="3" step="1" class="slider" list="tickmarks" id="cookieFilterSens">
+                            
+                            <!-- Tick marks / Labels -->
+                            <datalist id="tickmarks">
+                                <option value="0" label="No Blocking"></option>
+                                <option value="1" label="Midground Blocking"></option>
+                                <option value="2" label="Extreme"></option>
+                                <option value="3" label="ULTRA(cookie)KILL"></option>
+                            </datalist>
+
+                        </div>
+                    </div>
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+                    <div class="control-row">
+                        <div class="input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="DNSoverHTTPS" checked>
+                                <span class="checkmark"></span>
+                                DNS over HTTPS
+                                <a href="#" class="question-box" onclick="showInfo('DNS over HTTPS Encryption', 'DNS_HTTPS')">?</a>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="text-spacer"></div>
+                    <div class="control-row">
+                        <div class="input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="EncryptedClientHello" checked>
+                                <span class="checkmark"></span>
+                                Encrypted Client Hello
+                                <a href="#" class="question-box" onclick="showInfo('Encrypted Client Hello', 'EncryptedClientHello')">?</a>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="text-spacer"></div>
+                    <div class="control-row">
+                        <div class="input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id ="TabCloseCookieAction" checked>
+                                <span class="checkmark"></span>
+                                Automatic Cookie Accept on Tab Close
+                                <a href="#" class="question-box" onclick="showInfo('Cookie Action on Tab Close', 'TabClose-CookieAction')">?</a>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+                </div>
+
+            </main>
+
+            <aside class="info-panel active" id="infoPanel">
+                <div class="info-card">
+                    <h5 id="infoTitle">Select a Setting</h5>
+                    <p id="infoText">Click a blue box to see more information about a specific feature.</p>
+                </div>
+            </aside>
+
+
+        </div>
+        <div>
+            
+        </div>
+        
+
     </div>
 </body>
 
@@ -1027,6 +1329,9 @@
             // Update Content Visibility
             document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
+
+            //hide info panels
+            document.getElementById('infoPanel').classList.remove('active');
         }
 
         //This is entirely just for image uploads
@@ -1138,6 +1443,7 @@
                 bgDropArea.addEventListener('drop', handleDrop, false)
             }
 
+
         };
 
         function toggleDropdown(headerElement) {
@@ -1201,6 +1507,179 @@
             window.bridge.receiveData(["Stacks", JSON.stringify(fullState)]);
         }
 
+        function applyThemeColors() {
+            // Find all color inputs in the theme tab
+            const colorInputs = document.querySelectorAll('#themes input[type="color"]');
+            //Forcefully sanitise all name data. I can't do live updating with this form factor having a unique upload system, so it'll have to apply after applytheme is pressed
+            const SuggestedThemeName = document.getElementById("ColourThemeName").value.trim().replace(/[<>/\\"';{}()]/g, "").substring(0,32);
+            const colourData = {};
+            const colourDataOutput = {};
+            const themeName = SuggestedThemeName || currentTheme || "CustomTheme"; //pull theme name from selected apply point
+
+            colorInputs.forEach(input => {
+                // Build an object to replicate design in actionToggles.json, standardise formats for ids to match
+                inputTrim1 = (input.id).replace("rgbInput", "")
+                inputTrim2 = inputTrim1.toLowerCase();
+
+                strippedHex = (input.value).replace("#", "")
+                const r = parseInt(strippedHex.substring(0, 2), 16);
+                const g = parseInt(strippedHex.substring(2, 4), 16);
+                const b = parseInt(strippedHex.substring(4, 6), 16);
+
+                convRGB = (`(${r}, ${g}, ${b})`);
+
+                colourData[inputTrim2] = convRGB;
+                colourDataOutput[themeName] = colourData
+            });
+
+            // Send the signal via bridge
+            if (window.bridge) {
+                window.bridge.receiveData(["themeUpdate", colourDataOutput]);
+            }
+            
+            // Visual feedback
+            const btn = document.querySelector('.apply-btn');
+            btn.innerText = "Applied!";
+            setTimeout(() => btn.innerText = "Apply Theme", 2000);
+        }
+
+
+        function showInfo(title, varName) {
+            let panel = document.getElementById('infoPanel');
+            
+            // Get the text from the CSS variable
+            let description = getComputedStyle(document.documentElement)
+                                .getPropertyValue('--text-' + varName);
+            let trimDesc = description.replaceAll('"', "")
+            let finalText = trimDesc.replaceAll("<break1>", "\n").replaceAll("<break2>", "\n\n").replaceAll("<break3>", "\n\n")
+
+            document.getElementById('infoTitle').innerText = title;
+            document.getElementById('infoText').innerText = finalText;
+            
+            
+            panel.classList.add('active');
+        }
+
+        let currentTheme = null;
+
+        function selectTheme(themeName, themeData) {
+            currentTheme = themeName;
+            const dropdown = document.getElementById("ColourThemeList");
+            dropdown.querySelector('.dropdown-head span').textContent = themeName;
+
+            // Preview all colours live
+            Object.keys(themeData).forEach(key => {
+                const input = document.getElementById("rgbInput" + key.toUpperCase());
+
+                if (input) {
+
+                    let data = "#" + themeData[key]
+                        .replace(/[()]/g, "")
+                        .split(",")
+                        .map(val =>
+                            parseInt(val.trim())
+                                .toString(16)
+                                .padStart(2, '0')
+                            )
+                        .join('')
+                    input.value = data;
+
+                    // Update visible hex text
+                    const suffix = input.id.replace('rgbInput', '');
+                    const hexSpan = document.getElementById('hexValue' + suffix);
+
+                    if (hexSpan) {hexSpan.innerText = data.toUpperCase();
+                    }
+                }
+            });
+
+            dropdown.classList.remove('open');
+        }
+
+
+        const liveRegexFilters = {
+
+            timeInput: {
+                regex: /[^HhmsAP: ]/g,
+                maxLength: 32
+            },
+
+            advDate: {
+                regex: /[^dDmMyY/., -]/g,
+                maxLength: 32
+            },
+
+            ColourThemeName: {
+                regex: /[^a-zA-Z0-9 _-]/g,
+                maxLength: 24
+            }
+        };
+
+        function loadThemeEditor() {
+
+            window.bridge.getData("ColourThemeNames", (themeValue) => {
+
+                const allThemes = JSON.parse(themeValue);
+
+                window.bridge.getData("CurrentTheme", (currentThemeValue) => {
+                    currentTheme = currentThemeValue;
+
+                    // Update dropdown title
+                    const selector = document.getElementById("ColourThemeList");
+                    selector.querySelector('.dropdown-head span').textContent = currentTheme;
+
+                    // Load colours
+                    const themeData = allThemes[currentTheme];
+
+                    for (const [key, value] of Object.entries(themeData)) {
+                        const inputID = "rgbInput" + key.toUpperCase();
+                        const picker = document.getElementById(inputID);
+
+                        if (picker) {const data = "#" + 
+                            value.replace(/[()]/g, "")
+                                .split(",")
+                                .map(val =>
+                                    parseInt(val.trim())
+                                        .toString(16)
+                                        .padStart(2, '0')
+                                )
+                                .join('');
+
+                            picker.value = data;
+
+                            // Update hex labels
+                            const suffix = picker.id.replace('rgbInput', '');
+
+                            const hexSpan = document.getElementById('hexValue' + suffix);
+
+                            if (hexSpan) {hexSpan.innerText = data.toUpperCase();}
+                        }
+                    }
+
+                });
+
+            });
+
+        }
+
+        function loadSelectedTheme(themeName, allThemes) {
+
+            document.getElementById("ColourThemeName").value = themeName;
+
+            const themeData = allThemes[themeName];
+
+            for (const [key, value] of Object.entries(themeData)) {
+
+                const inputID = "rgbInput" + key.ToUpperCase();
+
+                const picker = document.getElementById(inputID);
+
+                if (picker) {
+                    picker.value = value;
+                }
+            }
+        }
+
 
 
         function dataUploadLink(bridge_name, data_ID) {
@@ -1220,22 +1699,19 @@
                 //input text sanitiser for text entry boxes
                 if (component.type === "text" || component.classList.contains("custom-input")) {
                     component.addEventListener('input', (e) => {
-                        if (["timeInput"].includes(component.id)) {
-                            // Strict Time Format Restriction
-                            e.target.value = e.target.value.replace(/[^HhmsAP: ]/g, "");
-                            if (e.target.value.length > 32) {
-                                e.target.value = e.target.value.substring(0, 32);
+                        const filter = liveRegexFilters[component.id];
+
+                        if (filter) {
+                            e.target.value = e.target.value.replace(filter.regex,"");
+
+                            if (filter.maxLength && e.target.value.length > filter.maxLength) {
+                                e.target.value = e.target.value.substring(0, filter.maxLength);
                             }
-                        } else if (["advDate"].includes(component.id)) {
-                            e.target.value = e.target.value.replace(/[^dDmMyY/., -]/g, "");
-                            if (e.target.value.length > 32) {
-                                e.target.value = e.target.value.substring(0, 32);
-                            }
+
                         } else {
-                            //Strips common HTML/Script injection characters
+                            // Default fallback sanitiser
                             e.target.value = e.target.value.replace(/[<>/\\"';{}()]/g, "");
-                            
-                            //Limit name length to 32 characters
+
                             if (e.target.value.length > 32) {
                                 e.target.value = e.target.value.substring(0, 32);
                             }
@@ -1253,6 +1729,19 @@
                         component.value = ""
                     }
                 })
+
+                // Color Picker Detection
+                if (component.type === "color") {
+                    // 'input' triggers as the user drags the mouse over the color palette
+                    component.addEventListener('input', () => {
+                        const suffix = component.id.replace('rgbInput', ''); 
+                        const hexSpan = document.getElementById('hexValue' + suffix);
+                        if (hexSpan) {
+                            hexSpan.innerText = component.value.toUpperCase();
+                        }
+                    });
+                }
+
             } else {
                 return
             }
@@ -1283,7 +1772,28 @@
                     } else if (component.type === "text" || component.classList.contains("custom-input")) {
                         component.placeholder = String(Value)
                     } else if (component.classList.contains("dropdown-container")) {
-                        component.querySelector('.dropdown-head span').textContent = String(Value);
+
+                        // Special handling for theme list
+                        if (component.id === "ColourThemeList") {
+                            const themes = JSON.parse(Value);
+                            const dropdownList = component.querySelector('.dropdown-list');
+                            dropdownList.innerHTML = "";
+
+                            Object.keys(themes).forEach(themeName => {
+                                const item = document.createElement("div");
+                                item.className = "dropdown-item";
+                                item.textContent = themeName;
+                                const previewColour = themes[themeName]["back_btn"] || "#444";
+                                item.style.borderLeft = `12px solid ${previewColour}`;
+                                item.onclick = () => {selectTheme(themeName, themes[themeName]);};
+                                dropdownList.appendChild(item);
+                            });
+
+                        } else {
+
+                            component.querySelector('.dropdown-head span')
+                                .textContent = String(Value);
+                        }
                     } else if (component.classList.contains("hierarchy-editor")) {
                         const settings = typeof Value === 'string' ? JSON.parse(Value) : Value;
                         const barLabels = {"nav_bar": "Search", "bookmarks_bar": "Bookmarks", "status_bar": "Status Info"};
@@ -1311,8 +1821,9 @@
             }
         }
 
-        new QWebChannel(qt.webChannelTransport, (channel) => {
+        new QWebChannel(qt.webChannelTransport, async (channel) => {
             window.bridge = channel.objects.pyBridge;
+            await loadThemeEditor();
 
             //Sending data on update to values
             
@@ -1357,6 +1868,8 @@
                dataDownloadLink(window.bridge, "DateDisplay", "Date Display") //Date Input Receive
 
                dataDownloadLink(window.bridge, "StackEditor", "TabStack"); //Stack Order Controller Receive
+
+               dataDownloadLink(window.bridge, "ColourThemeNames", "ColourThemeList")
 
 
             
