@@ -835,6 +835,7 @@ class Browser(QMainWindow):
 
         #Zoom
         self.zoomValue = 100
+        self.tab_zoom_values = {} #Dictionary to store zoom values for each tab
         self.is_panning = False
         self.pan_start_pos = None
         self.pan_offset_x = 0
@@ -1031,18 +1032,21 @@ class Browser(QMainWindow):
         else:
             self.zoomValue -= 10
         
-        if self.zoomValue < 0:
-            self.zoomValue = 0
-        if self.zoomValue > 300:
-            self.zoomValue = 300
+        if self.zoomValue < 50:
+            self.zoomValue = 50
+        if self.zoomValue > 500:
+            self.zoomValue = 500
 
+        # Store zoom value using browser widget as key (survives tab reordering)
+        self.tab_zoom_values[self.current_browser] = self.zoomValue
+        
         self.current_browser.setZoomFactor(self.zoomValue/100)
 
+        # Update slider without triggering its signal
         if hasattr(self, 'barManager') and hasattr(self.barManager, 'zoom_slider'):
             self.barManager.zoom_slider.blockSignals(True)
             self.barManager.zoom_slider.setValue(self.zoomValue)
             self.barManager.zoom_slider.blockSignals(False)
-
 
 
 
@@ -1061,6 +1065,9 @@ class Browser(QMainWindow):
         new_page.setWebChannel(self.channel)
         browser.setPage(new_page)
         browser.setUrl(qurl)
+
+        self.tab_zoom_values[browser] = 100
+        browser.setZoomFactor(1.0)
         
 
         i = self.tabs.addTab(browser, label)
@@ -1144,6 +1151,17 @@ class Browser(QMainWindow):
             raw_url = current_browser.url().toString()
             clean_url = self.UrlManager.normalise_url(raw_url)
             self.url_bar.setText(clean_url)
+
+            # Restore zoom value for this tab using browser widget as key
+            self.zoomValue = self.tab_zoom_values.get(current_browser, 100)
+            self.current_browser.setZoomFactor(self.zoomValue / 100)
+            
+            # Update slider to reflect tab's zoom
+            if hasattr(self, 'barManager') and hasattr(self.barManager, 'zoom_slider'):
+                self.barManager.zoom_slider.blockSignals(True)
+                self.barManager.zoom_slider.setValue(self.zoomValue)
+                self.barManager.zoom_slider.blockSignals(False)
+                self.barManager.zoomDisplay.setText(f"{self.zoomValue}%")
             
             #update url bar buttons, especially bookmarks
             self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)

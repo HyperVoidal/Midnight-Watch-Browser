@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 import requests
-from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor, QPalette, QFontMetrics
+from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor, QPalette, QFontMetrics, QDrag
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve, QDateTime
+from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve, QDateTime, QMimeData
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QTabBar, QStylePainter, QStyleOptionTab, QStyle
 from PySide6.QtCore import QSize
@@ -68,6 +68,7 @@ class BarManager:
         self.eColsStyle.append("tabs")
         self.eColsStyle.append("tab_backer")
         self.tabs.setTabsClosable(True)
+        self.tabs.setMovable(True)
         self.tabs.setDocumentMode(True)
         self.tabs.tabBar().setStyleSheet("""QTabBar::tab {
                                                 height: 35px;
@@ -155,8 +156,10 @@ class BarManager:
         return self.status_bar
     
     def on_zoom_slider_moved(self, value):
+        self.parent.tab_zoom_values[self.parent.current_browser] = value
         self.parent.zoomValue = value
         self.parent.current_browser.setZoomFactor(value / 100)
+        self.zoomDisplay.setText(f"{value}%")
 
     def updateStatusBar(self):
         with open(f"{srcSourceDir}/data/actionToggles.json", "r") as f:
