@@ -1,10 +1,11 @@
 import sys
 import warnings
+import PySide6
 from PySide6.QtCore import QUrl, QObject, Slot, QDateTime
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineUrlScheme, QWebEngineUrlSchemeHandler
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineUrlScheme, QWebEngineUrlSchemeHandler, qWebEngineChromiumVersion
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtCore import *
 from PySide6.QtGui import *
@@ -27,6 +28,9 @@ from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
 
+
+print("PyQt6 Version: " + PySide6.__version__)
+print("Internal Chromium Version: " + qWebEngineChromiumVersion())
 #Icon cache 
 icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
 icon_cache_dir.mkdir(exist_ok=True)
@@ -55,7 +59,6 @@ for key, value in engineData.items():
 #print("ENGINES LIST FROM JSON: ", engines)
 print("Startup Selected Engine: ", engine)
 
-
 #setText names
 global eColsButton, eColsStyle
 eColsButton = []
@@ -66,59 +69,65 @@ with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
     global toggles
     toggles = dict(json.load(f))
 
-if toggles["Encrypted-Client-Hello"]:
-    # Force ECH feature enablement
-    sys.argv.append("--enable-features=EncryptedClientHello")
-    sys.argv.append("--built-in-dns-lookup-enabled") 
-    
-    # Force the browser to process HTTPS records containing the ECH keys
-    sys.argv.append("--enable-switches-and-features=UseDnsHttpsSvcbAlpn")
-    
-    # CRITICAL: Prevent Chromium from using old TLS draft fallbacks 
-    sys.argv.append("--ssl-version-max=tls1.3")
-    print("Encrypted-Client Hello enabled")
-else:
-    sys.argv.append("--disable-features=EncryptedClientHello")
-    print("Encrypted-Client Hello disabled")
-
-
-if "Cookie-Prediction-Sensitivity" in toggles.keys():
-    global sensitivity
-    sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive, 3 for block everything with no limits. Anything past 1 may break persistent data
-
-if "Cookie-Accept/Deny-On-Leave" in toggles.keys():
-    global siteLeaveCookies
-    siteLeaveCookies = toggles["Cookie-Accept/Deny-On-Leave"] #0 for remove all, 1 for accept all
-
-if "Save-Tabs-On-Restart" in toggles.keys():
-    global saveTabsOnRestart
-    saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
-
 
 # ---- MAIN FUNCTIONS ----
-def settingsActivate():
+def updateDoHSettings(provider):
+    doh_providers = {
+        "Default": {
+            "mode": QWebEngineGlobalSettings.SecureDnsMode.SystemOnly, 
+            "url": ""
+        }, #No DoH
+        "Cloudflare": {
+            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
+            "url": "https://cloudflare-dns.com/dns-query"
+        }, #Secure but no additional systems
+        "Google Public DNS": {
+            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
+            "url": "https://dns.google/dns-query/dns-query"
+        }, #Fastest and most accessible but less secure
+        "AdGuard": {
+            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
+            "url": "https://dns.adguard-dns.com/dns-query"
+        }, #Slower but adds an additional ad/tracker blocker
+        "AdGuard Family": {
+            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
+            "url": "https://family.adguard-dns.com/dns-query"
+        } #Adguard system but with additional adult content filters
+    }
 
-    if toggles["DNS-over-HTTPS"]:
-        #Instantiate the DnsMode helper structure
-        dns_settings = QWebEngineGlobalSettings.DnsMode()
-        
-        #Add provider template(s) as a list of strings
-        dns_settings.serverTemplates = ["https://cloudflare-dns.com{?dns}"]
-        
-        #Set the security level (SecureOnly or SecureWithFallback)
-        dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureWithFallback
-        
-        #Apply the settings globally to the underlying network stack
-        if QWebEngineGlobalSettings.setDnsMode(dns_settings):
-            print("DNS-over-HTTPS enabled successfully via Qt6 API")
-        else:
-            print("Failed to enable DoH: Check server templates or syntax")
+    if provider not in doh_providers:
+        print(f"Error: Unknown provider '{provider}'")
+        return False
+
+    config = doh_providers[provider]
+    dns_settings = QWebEngineGlobalSettings.DnsMode()
+    dns_settings.secureMode = config["mode"]
+
+    if config["url"]:
+        dns_settings.serverTemplates = [config["url"]]
     else:
-        # Revert to standard system DNS settings
-        dns_settings = QWebEngineGlobalSettings.DnsMode()
-        dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.Off
-        QWebEngineGlobalSettings.setDnsMode(dns_settings)
-        print("DNS-over-HTTPS disabled")
+        dns_settings.serverTemplates = []
+    
+    success = QWebEngineGlobalSettings.setDnsMode(dns_settings)
+    if success:
+        print(f"Successfully switched browser DNS mode to: {provider}")
+        # Clear cache so subsequent lookups hit the new DNS endpoints instantly
+        QWebEngineProfile.defaultProfile().clearHttpCache()
+    else:
+        print(f"Chromium failed to update settings for provider: {provider}")
+        
+    return success
+
+
+
+
+def settingsActivate(toggles):
+
+    chromiumFlags = [
+        #allows DNS over HTTPS system
+        "--enable-features=DnsOverHttps ", 
+        "--force-fieldtrials=AsyncDns/Enabled",
+        ]
 
     if "Cookie-Prediction-Sensitivity" in toggles.keys():
         global sensitivity
@@ -132,7 +141,28 @@ def settingsActivate():
         global saveTabsOnRestart
         saveTabsOnRestart = toggles["Save-Tabs-On-Restart"]
 
-settingsActivate()
+    if toggles["Utilise-QUIC-Browsing"]:
+        chromiumFlags.extend([
+            "--enable-quic",
+            "--origin-to-force-quic-on=cloudflare-quic.com:443"
+        ])
+    
+    if toggles["DeGoogler"] == True:
+        #Disable all screened google flags that allow for a degoogled experience without compromising security too much. This is intneded to be a power-user feature that removes google alongside their inbuilt user protections under the assumption that the user knows what they're doing
+        chromiumFlags.extend([
+            "--disable-domain-reliability", #Disables reporting network errors to google
+            "--disable-features=MediaRouter,Translate", #Disable chromecast / LAN device discovery
+            "--disable-component-update", #Stops attempting to update the internal registry of extensions
+            "--disable-component-extensions-with-background-pages", #More extensions disabling
+            "--disable-default-apps", #Stops installation of default apps on startup
+            "--disable-stack-profiler", #Disables extra internal telemetry gathering and improves speed slightly
+            "--disable-background-networking" #Stops all background chromium processes, including most metrics systems but also a variety of helpful systems like Chromium's inbuilt phishing detection systems. For advanced users only.
+        ])
+
+
+    if chromiumFlags:
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(chromiumFlags)
+
 
 #value clamper
 def clamp(value, min_value, max_value):
@@ -252,10 +282,10 @@ class objectMasterBridge(QObject):
                 self.browser.cookieManager.updateSensitivity(new_level)
 
             if dataHeader == "DNSoverHTTPS": 
-                settingsData["DNS-over-HTTPS"] = (str(dataValue).lower() == "true")
-            
-            if dataHeader == "EncryptedClientHello": 
-                settingsData["Encrypted-Client-Hello"] = (str(dataValue).lower() == "true")
+                settingsData["DNS-over-HTTPS"] = str(dataValue)
+
+                #Trigger informational changes
+                updateDoHSettings(str(dataValue))
 
             if dataHeader == "TabCloseCookieAction": 
                 settingsData["Cookie-Accept/Deny-On-Leave"] = (str(dataValue).lower() == "true")
@@ -311,6 +341,12 @@ class objectMasterBridge(QObject):
             
             if dataHeader == "advDate":
                 settingsData["Date-Display"][0] = (str(dataValue))
+
+            if dataHeader == "QUICBrowse":
+                settingsData["Utilise-QUIC-Browsing"] = (str(dataValue).lower() == "true")
+            
+            if dataHeader == "DeGoogler":
+                settingsData["DeGoogler"] = (str(dataValue).lower() == "true")
             
             if dataHeader == "imageUpload":
                 fileInfo = dataValue
@@ -369,7 +405,7 @@ class objectMasterBridge(QObject):
                 json.dump(settingsData, file_return, indent=4)
 
             #Trigger a re-update of remaining systems
-            settingsActivate()
+            settingsActivate(settingsData)
 
     @Slot(str, result=str)
     def getData(self, key):
@@ -468,9 +504,6 @@ class objectMasterBridge(QObject):
         elif key == "DNSoHTTPS":
             return str(settingsData["DNS-over-HTTPS"])
         
-        elif key == "ECH": 
-            return str(settingsData["Encrypted-Client-Hello"])
-        
         elif key == "CookieActOnClose":
             return str(settingsData["Cookie-Accept/Deny-On-Leave"])
         
@@ -528,10 +561,17 @@ class objectMasterBridge(QObject):
             return json.dumps(datalist)
         
         elif key == "CurrentTheme":
-            return str(settingsData["Colour-Theme"])
+            return str(settingsData["Colour-Theme"])    
+
+        elif key == "QUICBrowsing":
+            return str(settingsData["Utilise-QUIC-Browsing"])    
+
+        elif key == "DeGoogler": 
+            return str(settingsData["DeGoogler"])  
             
         else:
             return f"Error: Key: {str(key)} not found"
+        
 
     #potential system to use later for the settings menu
     """ @Slot(str, str)
@@ -648,12 +688,14 @@ class Browser(QMainWindow):
 
         self.bookmarks_bar = self.barManager.setup_bookmarksbar()
 
+        self.status_bar = self.barManager.setup_statusbar()
+
 
         with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
-            PositionOrder = dict(json.load(f))
+            BootData = dict(json.load(f))
 
         #set components on top and bottom based on json settings
-        for element in PositionOrder["Top-Stack"]:
+        for element in BootData["Top-Stack"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
@@ -667,11 +709,11 @@ class Browser(QMainWindow):
             "East": QTabWidget.TabPosition.East
         }
         #set tab alignment based on JSON setting
-        self.tabs.setTabPosition(mapping[PositionOrder["Tab-Position"]])
+        self.tabs.setTabPosition(mapping[BootData["Tab-Position"]])
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout.addWidget(self.tabs, 1)
 
-        for element in PositionOrder["Bottom-Stack"]:
+        for element in BootData["Bottom-Stack"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
@@ -741,6 +783,46 @@ class Browser(QMainWindow):
         tabreload_action.setShortcut(QKeySequence("Ctrl+R"))
         tabreload_action.triggered.connect(self.reload_tab)
 
+        #Tab Forward command
+        tabForward_action = QAction("&Go Forward", self)
+        self.addAction(tabForward_action)
+        tabForward_action.setShortcut(QKeySequence("Alt+Right"))
+        tabForward_action.triggered.connect(lambda ok: self.go_forward())
+
+        #Tab backward command
+        tabBack_action = QAction("&Go Back", self)
+        self.addAction(tabBack_action)
+        tabBack_action.setShortcut(QKeySequence("Alt+Left"))
+        tabBack_action.triggered.connect(lambda ok: self.go_back())
+        
+        #Swap to index tabs command
+        available_indexes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+        for idx in available_indexes:
+            action = QAction(self)
+            action.setShortcut(QKeySequence(f"Ctrl+{idx}"))
+            action.triggered.connect(lambda checked=False, idx=idx: self.tabs.setCurrentIndex(9 if idx == 0 else idx - 1))
+            self.addAction(action) 
+
+        tabScrollRight_action = QAction(self)
+        self.addAction(tabScrollRight_action)
+        tabScrollRight_action.setShortcut(QKeySequence(f"Ctrl+Right"))
+        tabScrollRight_action.triggered.connect(lambda ok: self.tabs.setCurrentIndex(int(self.tabs.currentIndex()) + 1))
+
+        tabScrollLeft_action = QAction(self)
+        self.addAction(tabScrollLeft_action)
+        tabScrollLeft_action.setShortcut(QKeySequence(f"Ctrl+Left"))
+        tabScrollLeft_action.triggered.connect(lambda ok: self.tabs.setCurrentIndex(int(self.tabs.currentIndex()) - 1))
+
+        zoomIn_action = QAction(self)
+        self.addAction(zoomIn_action)
+        zoomIn_action.setShortcut(QKeySequence(f"Ctrl+="))
+        zoomIn_action.triggered.connect(lambda ok: self.setContentZoom(True))
+
+        zoomOut_action = QAction(self)
+        self.addAction(zoomOut_action)
+        zoomOut_action.setShortcut(QKeySequence(f"Ctrl+-"))
+        zoomOut_action.triggered.connect(lambda ok: self.setContentZoom(False))
+
         #Mute tab command - need to actually build
         """ tabmute_action = QAction("&Mute &Tab", self)
         self.addAction(tabmute_action)
@@ -748,8 +830,26 @@ class Browser(QMainWindow):
         tabmute_action.triggered.connect(self.mute_tab) """
 
 
+
+        #Miscellaneous additions
+
+        #Zoom
+        self.zoomValue = 100
+        self.is_panning = False
+        self.pan_start_pos = None
+        self.pan_offset_x = 0
+        self.pan_offset_y = 0
+
+
+
+
         #Run all browser startup triggers such as loading tabs from previous sessions, deploying js code, etc.
         self.onStartup()
+
+
+
+
+
 
 
 
@@ -838,6 +938,18 @@ class Browser(QMainWindow):
         if not hasattr(self, '_tabs_sized'):
             self.update_tab_sizes()
             self._tabs_sized = True
+
+    def wheelEvent(self, event):
+        """Handle mouse wheel zoom (including two-finger trackpad gestures)"""
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            # Ctrl + Scroll = Zoom
+            if event.angleDelta().y() > 0:
+                self.setContentZoom(True)
+            else:
+                self.setContentZoom(False)
+            event.accept()
+        else:
+            super().wheelEvent(event)
                 
 
 
@@ -846,12 +958,26 @@ class Browser(QMainWindow):
 
     '''Window System'''
 
-    def WindowConfirmation(self, title, message):
-        reply = QMessageBox.question(self, title, message,
-                                     QMessageBox.StandardButton.No |
-                                     QMessageBox.StandardButton.Yes)
-        return reply == QMessageBox.StandardButton.Yes
-    
+    def WindowConfirmation(self, title, message, num=2):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        
+        if num == 1:
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes)
+            yes_button = msg_box.button(QMessageBox.StandardButton.Yes)
+            yes_button.setText("Okay")
+        elif num == 2:
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        else: 
+            print("Too high a number of buttons passed to window confirmation!")
+            return
+            
+        msg_box.exec()
+        return msg_box.clickedButton() == yes_button
+
+        
 
     def WindowInput(self, title, message, default_text=""):
         text, ok = QInputDialog.getText(
@@ -871,7 +997,7 @@ class Browser(QMainWindow):
 
 
 
-    '''Buttons and Icons'''
+    '''Buttons, Controls, and Icons'''
 
     
 
@@ -883,6 +1009,39 @@ class Browser(QMainWindow):
     def new_tab(self): self.add_new_tab()
     def open_settings_menu(self): self.open_settings()
 
+
+
+    '''Zooming'''
+
+
+    def apply_zoom(self, value):
+        factor = value / 100.0
+        cursor_style = 'grab' if factor > 1 else 'auto'
+        js_code = f"""
+        document.body.style.transform = 'scale({factor}) translate({self.pan_offset_x}px, {self.pan_offset_y}px)';
+        document.body.style.transformOrigin = '0 0';
+        document.body.style.cursor = '{cursor_style}';
+        """
+        self.current_browser.page().runJavaScript(js_code)
+
+
+    def setContentZoom(self, direction):
+        if direction:
+            self.zoomValue += 10
+        else:
+            self.zoomValue -= 10
+        
+        if self.zoomValue < 0:
+            self.zoomValue = 0
+        if self.zoomValue > 300:
+            self.zoomValue = 300
+
+        self.current_browser.setZoomFactor(self.zoomValue/100)
+
+        if hasattr(self, 'barManager') and hasattr(self.barManager, 'zoom_slider'):
+            self.barManager.zoom_slider.blockSignals(True)
+            self.barManager.zoom_slider.setValue(self.zoomValue)
+            self.barManager.zoom_slider.blockSignals(False)
 
 
 
@@ -1581,7 +1740,13 @@ if __name__ == "__main__":
     )
     QWebEngineUrlScheme.registerScheme(scheme)
 
+    settingsActivate(toggles)
     app = QApplication(sys.argv)
+
+    #Trigger DNS over HTTPS System
+    if "DNS-over-HTTPS" in toggles.keys():
+        updateDoHSettings(toggles["DNS-over-HTTPS"])
+
     window = Browser()
     window.show()
     sys.exit(app.exec())

@@ -2,4 +2,3 @@ PySide6
 requests
 pyyaml
 pillow
-crx_unpack

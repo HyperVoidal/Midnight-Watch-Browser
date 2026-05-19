@@ -21,9 +21,10 @@
             --text-blur-strength: "Drag the slider around to set the strength of the blur effect applied to the background image of the homepage. <break2> A higher value means more of a blurring effect.";
             --text-image-display: "Drag and drop an image from your file system to the dotted area, or otherwise interact with the clickable button to open the file manager dialog. <break2> Select an image, and we'll handle the rest for you! Your image file will not be moved. <break2> Remember to check the local browser storage for images you've added in before!";
             --text-cookieSensitivity: "Drag the slider to one of four points to set the strength of the internal cookie filters for the browser. <break2> <No Blocking> has no cookie filtering and automatically accepts them as most browsers do. <break2> <Midground Blocking> filters known spamware and tracking cookies automatically, and leaves the rest to the cookie dropdown for you to decide whether to accept or not. This is the recommended option for conventional browsing if you want to keep access to websites. <break2> <Extreme> will begin removing cookies more aggressively, though will attempt to spare important ones. Some may be caught in the process and break some websites. <break2> <ULTRA(cookie)KILL> will destroy all cookies immediately, regardless of origin or function. <break2> Note: <break1> - Cookie filter settings do not apply retroactively, you cannot enable 3 to clear previously stored cookies.";
-            --text-DNS_HTTPS: "Enable this to enable DNS over HTTPS encryption. <break2> This setting automatically encrypts domain headers sent by the browser, allowing for improved security by making it harder for public wifi networks to see or potentially hijack searches. <break2> This setting requires a restart to take effect. <break2> Note that disabling the setting does not disrupt secure TCP connections, so if the setting is toggled while streaming content, the content stream will retain the old system until reloaded.";
-            --text-EncryptedClientHello: "Enable this to enable Encrypted Client Hello systems. <break2> This setting encrypts the starting message this browser and a website will exchange to initiate connections, thereby stopping network observers like Internet Service Providers to see which websites you visit.";
+            --text-DNS_HTTPS: "This setting automatically encrypts domain headers sent by the browser, allowing for improved security by making it harder for public wifi networks to see or potentially hijack searches. <break2> Provided options: <break1>- Unencrypted: provides no connection encryption (recommended to not use unless necessary)<break1>- Cloudflare: The most common option, good security and connection speed<break1>- Google: Faster and more compatible with sites, but less secure overall<break1>- AdGuard: Adds an extra layer of ad and tracker blocking at the cost of speed<break1>- AdGuard Family: Same as AdGuard but with additional content-aware filters to remove NSFW material from searches <break2> This setting is non-operational on connections with aggressive firewall or link filtering systems such as DOE DETNSW connections. Please disable this in the event of connection error as a primary troubleshooting step if you are on one such connection. <break2> This setting requires a restart to take effect.";
+            --text-QUICBrowse: "This setting enables QUIC browsing, which uses HTTP3 to deliver web content via UDP, making it faster but much more prone to loading errors and vulnerabilities. <break2> Enable at your own risk. <break2> This setting requires a restart to take effect.";
             --text-TabClose-CookieAction: "When disabled, closing a tab will set the browser to automatically delete all cookies remaining in the queue. <break2> When enabled, closing a tab will set the browser to automatically save all remaining cookies in the queue. <break2> We recommend keeping this disabled.";
+            --text-DeGoogler: "Enables all degoogler systems for the browser in an attempt to strip out all non-essential processing and remove telemetry data sending. <break2> Note this will have the side effect of disabling some useful features too, including the inbuilt phishing website alerts in default chromium. This setting is recommended only for people who really know their way around the internet. Enable at your own risk. <break2> This setting requires a restart to take effect."
             }
         
         html, body {
@@ -153,7 +154,6 @@
         
         .nav-item { 
             padding: 23px;
-            padding-right: 28px; /* Account for italics making text look slightly too far left */ 
             cursor: pointer; 
             color: #aaa; 
             margin: 10px;
@@ -802,7 +802,7 @@
             <aside class="nav-container">
                 <div class="nav-item active" onclick="switchTab(this, 'general')">General</div>
                 <div class="nav-item" onclick="switchTab(this, 'themes')">Themes</div>
-                <div class="nav-item" onclick="switchTab(this, 'privacy')">Privacy</div>
+                <div class="nav-item" onclick="switchTab(this, 'advanced')">Advanced</div>
             </aside>
 
             <main class="settings-content">
@@ -1235,7 +1235,7 @@
                 </div>
 
 
-                <div id="privacy" class="tab-pane">
+                <div id="advanced" class="tab-pane">
                     <h2>Privacy</h2>
                     <div class="title-spacer"></div>
                     <div class="control-row">
@@ -1260,23 +1260,50 @@
                     <hr class="separator-left">
                     <div class="text-spacer"></div>
                     <div class="control-row">
+                        <label>DNS Over HTTPS</label>
+                        <div class="input-group">
+                            <div class="dropdown-container" data-setting="DNSoverHTTPS" id="DNSoverHTTPS">
+                                <div class="dropdown-head" onclick="toggleDropdown(this)">
+                                    <span>DNS Encryption Provider</span>
+                                    <i class="arrow-down"></i>
+                                </div>
+                                <div class="dropdown-list">
+                                    <div class="dropdown-item" onclick="selectOption(this)">Default</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">Cloudflare</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">Google Public DNS</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">AdGuard</div>
+                                    <div class="dropdown-item" onclick="selectOption(this)">AdGuard Family</div>
+                                </div>                  
+                            </div>
+                            <a href="#" class="question-box" onclick="showInfo('DNS over HTTPS Encryption', 'DNS_HTTPS')">?</a>
+                        </div>
+
+                    </div>
+
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+
+                    
+                    <div class="control-row">
                         <div class="input-group">
                             <label class="checkbox-container">
-                                <input type="checkbox" id="DNSoverHTTPS" checked>
+                                <input type="checkbox" id="QUICBrowse" checked>
                                 <span class="checkmark"></span>
-                                DNS over HTTPS
-                                <a href="#" class="question-box" onclick="showInfo('DNS over HTTPS Encryption', 'DNS_HTTPS')">?</a>
+                                Enable QUIC Browsing
+                                <a href="#" class="question-box" onclick="showInfo('QUIC Browsing', 'QUICBrowse')">?</a>
                             </label>
                         </div>
                     </div>
                     <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
                     <div class="control-row">
                         <div class="input-group">
                             <label class="checkbox-container">
-                                <input type="checkbox" id="EncryptedClientHello" checked>
+                                <input type="checkbox" id ="DeGoogler" checked>
                                 <span class="checkmark"></span>
-                                Encrypted Client Hello
-                                <a href="#" class="question-box" onclick="showInfo('Encrypted Client Hello', 'EncryptedClientHello')">?</a>
+                                Maximal deGoogler
+                                <a href="#" class="question-box" onclick="showInfo('Maximal deGoogler', 'DeGoogler')">?</a>
                             </label>
                         </div>
                     </div>
@@ -1831,7 +1858,7 @@
             dataUploadLink(window.bridge, "cookieFilterSens") //Cookie Filter Strength Send
 
             dataUploadLink(window.bridge, "DNSoverHTTPS") //DNS over HTTPS Send
-            dataUploadLink(window.bridge, "EncryptedClientHello") //Encrypted Client Hello Send
+            dataUploadLink(window.bridge, "QUICBrowse") //QUIC browse sending
             dataUploadLink(window.bridge, "TabCloseCookieAction") //Accept/Deny Cookies on Closing Tab Send
             dataUploadLink(window.bridge, "SaveTabsOnReload") // Save Tabs on Browser Restart Send
             dataUploadLink(window.bridge, "DisplayGreeting") // Display Greeting Send
@@ -1840,6 +1867,8 @@
             dataUploadLink(window.bridge, "nameInput") //Name Input Send
             dataUploadLink(window.bridge, "timeInput") //Time Input Send
             dataUploadLink(window.bridge, "advDate") //Advanced Date Input Send
+
+            dataUploadLink(window.bridge, "DeGoogler") // Maximal Degoogler Send
 
             //Tab Bar Position Sender and Date Input Sender in a shared dropdown click interpreter function called selectOption
             //Stack Order Controller Sender is linked to the movement trigger in the drop function
@@ -1854,7 +1883,7 @@
                dataDownloadLink(window.bridge, "cookieSens", "cookieFilterSens") //Cookie Filter Strength Receive
 
                dataDownloadLink(window.bridge, "DNSoHTTPS", "DNSoverHTTPS") //DNS over HTTPS Receive
-               dataDownloadLink(window.bridge, "ECH", "EncryptedClientHello") //Encrypted Client Hello Receive
+               dataDownloadLink(window.bridge, "QUICBrowsing", "QUICBrowse") //QUIC Browsing Receive
                dataDownloadLink(window.bridge, "CookieActOnClose", "TabCloseCookieAction") //Accept/Deny Cookies on Closing Tab Receive
                dataDownloadLink(window.bridge, "SaveTabsOnRestart", "SaveTabsOnReload") // Save Tabs on Browser Restart Receive
                dataDownloadLink(window.bridge, "GreetDisp", "DisplayGreeting") // Display Greeting Receive
@@ -1869,7 +1898,9 @@
 
                dataDownloadLink(window.bridge, "StackEditor", "TabStack"); //Stack Order Controller Receive
 
-               dataDownloadLink(window.bridge, "ColourThemeNames", "ColourThemeList")
+               dataDownloadLink(window.bridge, "ColourThemeNames", "ColourThemeList") //Colour theme list receive
+
+               dataDownloadLink(window.bridge, "DeGoogler", "DeGoogler") //Maximal Degoogler Send
 
 
             

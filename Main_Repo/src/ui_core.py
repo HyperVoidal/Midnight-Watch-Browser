@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 import requests
-from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor, QPalette
+from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor, QPalette, QFontMetrics
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve, QDateTime
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QTabBar, QStylePainter, QStyleOptionTab, QStyle
 from PySide6.QtCore import QSize
@@ -103,6 +103,111 @@ class BarManager:
 
 
         return self.nav_bar
+
+    def setup_statusbar(self):
+        self.status_bar = QToolBar("Status")
+        self.status_bar.setMovable(False)
+        self.eColsStyle.append("status_bar")
+
+        #spacer widget
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        #controls the date display
+        self.dateBox = QLineEdit()
+        self.dateBox.setReadOnly(True)
+        self.dateBox.setPlaceholderText("...")
+        self.dateBox.setMaximumWidth(300)
+        
+        #controls the time display
+        self.timeBox = QLineEdit()
+        self.timeBox.setReadOnly(True)
+        self.timeBox.setPlaceholderText("...")
+        self.timeBox.setMaximumWidth(150)
+
+        #controls the zoom display and slider
+        self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
+        self.zoom_slider.setMinimum(0)
+        self.zoom_slider.setMaximum(300)
+        self.zoom_slider.setValue(100)
+        self.zoom_slider.setFixedWidth(self.status_bar.width() // 3)
+        self.zoom_slider.sliderMoved.connect(self.on_zoom_slider_moved)
+
+        #dispay based on current zoom value, press to return to 100% exactly
+        self.zoomDisplay = QPushButton("100%")
+        self.zoomDisplay.clicked.connect(lambda: self.zoom_slider.setValue(100))
+        self.zoom_slider.valueChanged.connect(lambda value: (self.zoomDisplay.setText(f"{value}%"), self.on_zoom_slider_moved(value)))
+
+
+        #sets the displays to the bar
+        self.status_bar.addWidget(self.zoom_slider)
+        self.status_bar.addWidget(self.zoomDisplay)
+        self.status_bar.addWidget(spacer)
+        self.status_bar.addWidget(self.timeBox)
+        self.status_bar.addWidget(self.dateBox)
+
+
+        #runs the update timer
+        self.barUpdateTimer = QTimer(self.parent)
+        self.barUpdateTimer.timeout.connect(self.updateStatusBar)
+        self.barUpdateTimer.start(1000)
+
+        return self.status_bar
+    
+    def on_zoom_slider_moved(self, value):
+        self.parent.zoomValue = value
+        self.parent.current_browser.setZoomFactor(value / 100)
+
+    def updateStatusBar(self):
+        with open(f"{srcSourceDir}/data/actionToggles.json", "r") as f:
+            settingsDataPull = dict(json.load(f))
+        
+        #time return - pulls from same system as new tab window display
+        timeFormat = (settingsDataPull["Time-Display"])
+        timeCall = QDateTime.currentDateTime()
+        time_text = timeCall.toString(f"{timeFormat}")
+        self.timeBox.setText(time_text)
+        time_metrics = QFontMetrics(self.timeBox.font())
+        time_width = time_metrics.horizontalAdvance(time_text) + 16
+        self.timeBox.setFixedWidth(time_width)
+
+
+
+        #date return - pulls from same system as new tab window display
+        date_format, provide_year = settingsDataPull["Date-Display"][0], settingsDataPull["Date-Display"][1]
+        dateCall = QDateTime.currentDateTime()
+
+        # Define base formats without year info
+        format_map = {
+                "dd/MM": "Global",
+                "M/d": "US",
+                "MM-dd": "ISO",  
+                "dddd, d MMMM": "Long-Form",
+                "dd MMM": "Minimalist"
+            }
+        
+        if date_format in format_map.keys():
+            base = format_map[date_format]
+
+            # Specific year-attachment logic per format
+            if provide_year:
+                if base == "ISO":
+                    date_format = f"yyyy-{date_format}"
+                elif base in ["Global", "US"]:
+                    date_format += "/yyyy"
+                else: # Long-Form and Minimalist
+                    date_format += " yyyy"
+
+        else:
+            if provide_year:  
+                date_format += " yyyy"
+            else:
+                pass
+        date_text = dateCall.toString(date_format)
+        self.dateBox.setText(date_text)
+        date_metrics = QFontMetrics(self.dateBox.font())
+        date_width = date_metrics.horizontalAdvance(date_text) + 16
+        self.dateBox.setFixedWidth(date_width)
     
     def setup_bookmarksbar(self):
         self.bookmarks_bar = QToolBar("Bookmarks")

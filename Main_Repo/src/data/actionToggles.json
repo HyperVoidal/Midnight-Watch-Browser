@@ -1,19 +1,17 @@
 {
-    "DNS-over-HTTPS": true,
-    "Encrypted-Client-Hello": true,
+    "DNS-over-HTTPS": "Default",
     "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny-On-Leave": false,
     "Save-Tabs-On-Restart": false,
     "Tab-Position": "North",
     "Top-Stack": [
-        "nav_bar"
-    ],
-    "Bottom-Stack": [
+        "nav_bar",
         "bookmarks_bar"
     ],
-    "Hidden-Stack": [
+    "Bottom-Stack": [
         "status_bar"
     ],
+    "Hidden-Stack": [],
     "Date-Display": [
         "dddd, d MMMM",
         true
@@ -23,5 +21,7 @@
     "Greeting": true,
     "Blur": 10,
     "Image-Url": "MainImageBackground.png",
-    "Colour-Theme": "Secured Blue"
+    "Colour-Theme": "Secured Blue",
+    "Utilise-QUIC-Browsing": true,
+    "DeGoogler": false
 }

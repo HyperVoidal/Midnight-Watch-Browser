@@ -4,6 +4,7 @@ from engine_bridge import is_url_safe, get_cosmetic_filters, get_scriptlets
 from PySide6.QtWebEngineCore import QWebEngineUrlScheme, QWebEngineUrlSchemeHandler
 from pathlib import Path
 import os
+import json
 srcSourceDir = Path(__file__).parent
 
 
@@ -114,7 +115,9 @@ class CosmeticBlocker:
         url = browser.url().toString()
         css_rules = get_cosmetic_filters(url)
         
-        # Use raw string and triple quotes to avoid Python/JS bracket confusion
+        # Safely convert the CSS payload to a valid JSON-encoded JavaScript string literal
+        safe_css_rules = json.dumps(css_rules)
+        
         js_payload = f"""
         try {{
             (function() {{
@@ -128,11 +131,10 @@ class CosmeticBlocker:
                         style.id = 'midnight-cosmetic-shield';
                         target.appendChild(style);
                     }}
-                    // Use textContent for TrustedHTML compatibility
-                    style.textContent = `{css_rules}`; 
+                    // safe_css_rules already contains outer quotes due to json.dumps
+                    style.textContent = {safe_css_rules}; 
                 }};
 
-                // If the document is still loading, wait for it
                 if (document.readyState === 'loading') {{
                     document.addEventListener('DOMContentLoaded', inject);
                 }} else {{
@@ -140,7 +142,7 @@ class CosmeticBlocker:
                 }}
             }})();
         }} catch (err) {{
-            console.error("Caught Error: ", err.name, " ", err.message);
+            console.error("Midnight Shield Cosmetic Error: ", err.name, " ", err.message);
         }}
         """
         browser.page().runJavaScript(js_payload)
@@ -171,7 +173,7 @@ class EVAdInterceptor():
         script.setSourceCode(js_code)
         script.setName("EVAdIntercept_Payload")
 
-        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         script.setRunsOnSubFrames(True)
 
