@@ -1,0 +1,100 @@
+
+{
+    "id0":    {
+        "Name": "Default",
+        "photoURL": "ui/profile_icons/default.png",
+        "stored_data": {
+            "DNS-over-HTTPS": "AdGuard",
+            "Cookie-Prediction-Sensitivity": 0,
+            "Cookie-Accept/Deny-On-Leave": false,
+            "Save-Tabs-On-Restart": false,
+            "Tab-Position": "North",
+            "Top-Stack": [
+                "nav_bar",
+                "bookmarks_bar"
+            ],
+            "Bottom-Stack": [
+                "status_bar"
+            ],
+            "Hidden-Stack": [],
+            "Date-Display": [
+                "dddd, d MMMM",
+                true
+            ],
+            "Time-Display": "hh:mm AP",
+            "Name": "Default",
+            "Greeting": true,
+            "Blur": 10,
+            "Image-Url": "MainImageBackground.png",
+            "Colour-Theme": "Secured Blue",
+            "Utilise-QUIC-Browsing": true,
+            "DeGoogler": false
+            }
+        },
+
+    "id1": {
+        "Name": "Default 2",
+        "photoURL": "ui/profile_icons/default.png",
+        "stored_data": {
+            "DNS-over-HTTPS": "Cloudflare",
+            "Cookie-Prediction-Sensitivity": 2,
+            "Cookie-Accept/Deny-On-Leave": false,
+            "Save-Tabs-On-Restart": true,
+            "Tab-Position": "West",
+            "Top-Stack": [
+                "bookmarks_bar",
+                "nav_bar"
+            ],
+            "Bottom-Stack": [
+                "status_bar"
+            ],
+            "Hidden-Stack": [],
+            "Date-Display": [
+                "dddd, d MMMM",
+                true
+            ],
+            "Time-Display": "HH:mm:ss",
+            "Name": "MidnightGuard",
+            "Greeting": true,
+            "Blur": 10,
+            "Image-Url": "MainImageBackground.png",
+            "Colour-Theme": "Secured Blue",
+            "Utilise-QUIC-Browsing": false,
+            "DeGoogler": false
+            }
+    },
+
+    "id2": {
+        "Name": "Ephemeral",
+        "photoURL": "",
+        "stored_data": {
+            "DNS-over-HTTPS": "Default",
+            "Cookie-Prediction-Sensitivity": 4,
+            "Cookie-Accept/Deny-On-Leave": false,
+            "Save-Tabs-On-Restart": false,
+            "Tab-Position": "North",
+            "Top-Stack": [
+                "nav_bar"
+            ],
+            "Bottom-Stack": [
+                "status_bar"
+            ],
+            "Hidden-Stack": [
+                "bookmarks_bar"
+            ],
+            "Date-Display": [
+                "dddd, d MMMM",
+                true
+            ],
+            "Time-Display": "HH:mm:ss",
+            "Name": "MidnightGuard",
+            "Greeting": false,
+            "Blur": 10,
+            "Image-Url": "MainImageBackground.png",
+            "Colour-Theme": "Secured Blue",
+            "Utilise-QUIC-Browsing": false,
+            "DeGoogler": false
+            }
+    }
+
+}

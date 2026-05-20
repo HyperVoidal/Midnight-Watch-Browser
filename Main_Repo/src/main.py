@@ -64,11 +64,6 @@ global eColsButton, eColsStyle
 eColsButton = []
 eColsStyle = []
 
-#Apply starting settings from settings json file
-with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
-    global toggles
-    toggles = dict(json.load(f))
-
 
 # ---- MAIN FUNCTIONS ----
 def updateDoHSettings(provider):
@@ -268,8 +263,7 @@ class objectMasterBridge(QObject):
             dataValue = data[1]
             print(f"Received data: {dataHeader}: {dataValue}")
 
-            with open (f"{srcSourceDir}/data/actionToggles.json", "r") as file_grab:
-                settingsData = dict(json.load(file_grab))
+            settingsData = self.browser.settingsData
             
             if dataHeader == "blur-slider":
                 settingsData["Blur"] = round(int(dataValue) / 25)
@@ -405,6 +399,7 @@ class objectMasterBridge(QObject):
                 json.dump(settingsData, file_return, indent=4)
 
             #Trigger a re-update of remaining systems
+            self.browser.settingsData = settingsData.copy()
             settingsActivate(settingsData)
 
     @Slot(str, result=str)
@@ -582,9 +577,121 @@ class objectMasterBridge(QObject):
         self.dataUpdated.emit(key, value) """
     
 
+class profileSelectUI(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Profile Select")
+        self.resize(1200, 800)
+        self.setWindowIcon(get_normIcon("tightlyCroppedIcon.png"))
+
+        with open(f"{srcSourceDir}/data/profileData.json", "r") as f:
+            self.profileData = dict(json.load(f))
+
+        self.init_ui()
+
+    def init_ui(self):
+        # Set background color to match settings menu (darker grey)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgb(45, 45, 60);
+            }
+        """)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
+
+        # Title label
+        title = QLabel("Select Profile to Load Settings")
+        title.setStyleSheet("""
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+        """)
+        main_layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # Centered scroll area for buttons
+        scroll_area = QScrollArea()
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: rgb(45, 45, 60);
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: rgb(45, 45, 60);
+                width: 12px;
+                border-radius: 10px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgb(85, 85, 105);
+                border-radius: 10px;
+                border: 2px solid rgb(45, 45, 60);
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgb(110, 110, 135);
+            }
+        """)
+        scroll_area.setWidgetResizable(True)
+
+        # Container widget with centered layout
+        container = QWidget()
+        container.setStyleSheet("background-color: rgb(45, 45, 60);")
+        self.buttonBox = QVBoxLayout(container)
+        self.buttonBox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.buttonBox.setSpacing(15)
+        self.buttonBox.setContentsMargins(40, 40, 40, 40)
+
+        # Create buttons for each profile
+        for i in range(len(self.profileData.keys())):
+            profile_key = "id" + str(i)
+            profile_name = self.profileData[profile_key]["Name"]
+            
+            btn = QPushButton(profile_name)
+            btn.setFixedSize(250, 80)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgb(60, 60, 75);
+                    color: white;
+                    border: 2px solid rgb(63, 129, 255);
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: rgb(70, 70, 85);
+                    border: 2px solid rgb(96, 151, 253);
+                }
+                QPushButton:pressed {
+                    background-color: rgb(50, 50, 65);
+                }
+            """)
+            btn.setToolTip(profile_name)
+            btn.clicked.connect(lambda checked=False, profile=profile_key: self.select_profile(profile))
+            
+            self.buttonBox.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+            setattr(self, f"profile_{profile_key}", btn)
+
+        # Add stretch at the end to push buttons to top-center
+        self.buttonBox.addStretch()
+
+        scroll_area.setWidget(container)
+        main_layout.addWidget(scroll_area, 1)
+
+    def select_profile(self, profile_key):
+        """Handle profile selection"""
+        self.selected_profile = profile_key
+        self.accept()
+
+    def getSelectedConfig(self):
+        if hasattr(self, 'selected_profile'):
+            return self.profileData[self.selected_profile]
+        print("sending profile data")
+        return None
+
+
 
 class Browser(QMainWindow):
-    def __init__(self):
+    def __init__(self, profile_config: dict):
         super().__init__()
         self.setWindowTitle("Midnight Watch Browser")
         self.resize(1200, 800)
@@ -593,12 +700,20 @@ class Browser(QMainWindow):
         global eColsButton
         global sensitivity
 
-        
+        #update main loader json file with the info selected from the profile
+        profileData = profile_config["stored_data"]
 
-        self.user = "mainUser"
+        with open(f"{srcSourceDir}/data/actionToggles.json","w") as f:
+            json.dump(profileData, f, indent=4)
 
-        
-        self.profile = QWebEngineProfile("PersistentUser", self)
+        self.settingsData = json.loads(json.dumps(profileData))
+
+        settingsActivate(self.settingsData)
+
+        if profile_config["Name"] == "Ephemeral":
+            self.profile = QWebEngineProfile("Ephemeral", self)
+        else:
+            self.profile = QWebEngineProfile("PersistentUser", self)
         self.current_browser = QWebEngineView(self)
 
         #Url Manager
@@ -630,18 +745,19 @@ class Browser(QMainWindow):
         
 
 
-        #Data storage management - future plans to use this for history saving and long term cookie storage/removal choices for users
-        base_path = os.path.abspath("./Main_Repo/src/data/Browser_Data")
-        profile_path = os.path.join(base_path, "User_Profile")
-        cache_path = os.path.join(base_path, "User_Cache")
+        #Data storage management - future plans to use this for history saving
+        if profile_config["Name"] != "Ephemeral":
+            base_path = os.path.abspath("./Main_Repo/src/data/Browser_Data")
+            profile_path = os.path.join(base_path, "User_Profile")
+            cache_path = os.path.join(base_path, "User_Cache")
 
-        os.makedirs(profile_path, exist_ok=True)
-        os.makedirs(cache_path, exist_ok=True)
+            os.makedirs(profile_path, exist_ok=True)
+            os.makedirs(cache_path, exist_ok=True)
 
-        self.profile.setCachePath(cache_path)
-        self.profile.setPersistentStoragePath(profile_path)
-        self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
-        self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+            self.profile.setCachePath(cache_path)
+            self.profile.setPersistentStoragePath(profile_path)
+            self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
+            self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
 
 
 
@@ -679,7 +795,7 @@ class Browser(QMainWindow):
 
         self.tabs = self.barManager.setup_tabs()
 
-        if actionToggles["Tab-Position"] in ["East", "West"]:
+        if self.settingsData["Tab-Position"] in ["East", "West"]:
              self.tabs.tabCloseRequested.connect(lambda i: QTimer.singleShot(0, self.tabs.tabBar().update_hover_from_cursor))
         self.tabs.tabCloseRequested.connect(lambda i: (self.close_tab(i)))
         self.tabs.currentChanged.connect(self.switch_tab)
@@ -688,14 +804,11 @@ class Browser(QMainWindow):
 
         self.bookmarks_bar = self.barManager.setup_bookmarksbar()
 
-        self.status_bar = self.barManager.setup_statusbar()
+        self.status_bar = self.barManager.setup_statusbar(profile_icon=f"{srcSourceDir}/{profile_config['photoURL']}", name=profile_config["Name"])
 
-
-        with open (f"{srcSourceDir}/data/actionToggles.json", "r") as f:
-            BootData = dict(json.load(f))
 
         #set components on top and bottom based on json settings
-        for element in BootData["Top-Stack"]:
+        for element in self.settingsData["Top-Stack"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
@@ -709,11 +822,11 @@ class Browser(QMainWindow):
             "East": QTabWidget.TabPosition.East
         }
         #set tab alignment based on JSON setting
-        self.tabs.setTabPosition(mapping[BootData["Tab-Position"]])
+        self.tabs.setTabPosition(mapping[self.settingsData["Tab-Position"]])
         self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout.addWidget(self.tabs, 1)
 
-        for element in BootData["Bottom-Stack"]:
+        for element in self.settingsData["Bottom-Stack"]:
             widget = getattr(self, element, None)
             if widget:
                 self.layout.addWidget(widget)
@@ -729,7 +842,7 @@ class Browser(QMainWindow):
     
 
         #Colour palette systems
-        self.selectedprofile = toggles["Colour-Theme"]
+        self.selectedprofile = self.settingsData["Colour-Theme"]
         print(self.selectedprofile)
 
         with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
@@ -879,7 +992,7 @@ class Browser(QMainWindow):
         #Update all tabs to the correct appearance
         self.update_tab_icon(self.current_browser)
 
-    def shutdown_Systems(self):
+    def shutdown_Systems(self, restart=False):
         if saveTabsOnRestart:
             #save all urls to a json file for attempted re-opening on browser start
             savetabs = {}
@@ -899,13 +1012,25 @@ class Browser(QMainWindow):
             if browser and hasattr(browser, 'page') and browser.page():
                 browser.page().deleteLater()
 
+        self.restart_requested = restart
         #Clear HTTP cache to avoid potential clientside injection attacks
-        self.profile.clearHttpCacheCompleted.connect(self.exit_app)
+        self.profile.clearHttpCacheCompleted.connect(self.finish_shutdown)
         self.profile.clearHttpCache()
 
+    def finish_shutdown(self):
+            QApplication.quit()
 
-    def exit_app(self):
+    def fullRestart(self, profile_config):
+        with open(f"{srcSourceDir}/data/currentProfile.json","w") as f:
+            json.dump(profile_config, f, indent=4)
+
         QApplication.quit()
+
+        QProcess.startDetached(
+            sys.executable,
+            sys.argv
+        )
+
 
 
 
@@ -931,7 +1056,7 @@ class Browser(QMainWindow):
             # Width changed - update tab sizes
             self.update_tab_sizes()
         
-        if toggles["Tab-Position"] in ["East", "West"]:
+        if self.settingsData["Tab-Position"] in ["East", "West"]:
             self.tabs.tabBar().update_hover_from_cursor()
 
     def showEvent(self, event):
@@ -969,15 +1094,15 @@ class Browser(QMainWindow):
             msg_box.setStandardButtons(QMessageBox.StandardButton.Yes)
             yes_button = msg_box.button(QMessageBox.StandardButton.Yes)
             yes_button.setText("Okay")
+            msg_box.exec()
+            return msg_box.clickedButton() == yes_button
         elif num == 2:
             msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg_box.exec()
+            return msg_box.clickedButton() == msg_box.button(QMessageBox.StandardButton.Yes)
         else: 
             print("Too high a number of buttons passed to window confirmation!")
             return
-            
-        msg_box.exec()
-        return msg_box.clickedButton() == yes_button
-
         
 
     def WindowInput(self, title, message, default_text=""):
@@ -1088,7 +1213,7 @@ class Browser(QMainWindow):
         self.update_tab_sizes()
         self.update_tab_icon(self.current_browser)
         #Update tab apperances for vertical-specific adjustments
-        if toggles["Tab-Position"] in ["East", "West"]:
+        if self.settingsData["Tab-Position"] in ["East", "West"]:
             VerticalTabBar.update_close_buttons(self.tabs.tabBar())
             QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
         else:
@@ -1141,7 +1266,7 @@ class Browser(QMainWindow):
 
         self.update_tab_sizes()
         #Vertical tab specific updates
-        if toggles["Tab-Position"] in ["East", "West"]:
+        if self.settingsData["Tab-Position"] in ["East", "West"]:
             QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
 
     def switch_tab(self, index):
@@ -1166,7 +1291,7 @@ class Browser(QMainWindow):
             #update url bar buttons, especially bookmarks
             self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
             #Vertical tab specific updates
-            if toggles["Tab-Position"] in ["East", "West"]:
+            if self.settingsData["Tab-Position"] in ["East", "West"]:
                 QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
             
 
@@ -1211,7 +1336,7 @@ class Browser(QMainWindow):
 
     def update_tab_sizes(self):
         #Guard clause to only run these updates if the user is on a horizontal tab system
-        if toggles["Tab-Position"] in ["East", "West"]:
+        if self.settingsData["Tab-Position"] in ["East", "West"]:
             return
         tab_width = self.calculate_tab_width()
         tabbar = self.tabs.tabBar()
@@ -1743,11 +1868,34 @@ class Browser(QMainWindow):
         self.cookieGUI() 
 
 
+    #profile menu reloader system
+    def open_profile_menu(self):
+        if self.WindowConfirmation("Restart Required", "Browser will restart to allow profile changes. Continue?"):
+            
+            # Save current open tabs before restart
+            if saveTabsOnRestart:
+                savetabs = {}
+                for tab in range(self.tabs.count()):
+                    if "midnightwatch://" not in self.tabs.widget(tab).url().toString():
+                        savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
+                
+                with open(f"{srcSourceDir}/data/bootupTabs.json", "w") as f:
+                    json.dump(savetabs, f, indent=4)
+            
+            # Close current browser window
+            launcher = profileSelectUI()
 
+            if launcher.exec() == QDialog.Accepted:
+
+                profile = launcher.getSelectedConfig()
+
+                self.fullRestart(profile)
+            
 
 '''Main execution loop'''
-    
-if __name__ == "__main__":
+
+""" if __name__ == "__main__":
+
     scheme = QWebEngineUrlScheme(b"MidnightWatch")
     scheme.setFlags(
         QWebEngineUrlScheme.Flag.SecureScheme |
@@ -1764,7 +1912,51 @@ if __name__ == "__main__":
     #Trigger DNS over HTTPS System
     if "DNS-over-HTTPS" in toggles.keys():
         updateDoHSettings(toggles["DNS-over-HTTPS"])
-
     window = Browser()
     window.show()
+
+    sys.exit(app.exec()) """
+    
+if __name__ == "__main__":
+    # Register scheme FIRST - before QApplication or any dialogs
+    scheme = QWebEngineUrlScheme(b"MidnightWatch")
+    scheme.setFlags(
+        QWebEngineUrlScheme.Flag.SecureScheme |
+        QWebEngineUrlScheme.Flag.LocalScheme |
+        QWebEngineUrlScheme.Flag.LocalAccessAllowed |
+        QWebEngineUrlScheme.Flag.CorsEnabled |
+        QWebEngineUrlScheme.Flag.FetchApiAllowed
+    )
+    QWebEngineUrlScheme.registerScheme(scheme)
+    
+    # NOW create the application
+    app = QApplication(sys.argv)
+
+    # Show profile selector
+    selectedProfile = None
+
+    if os.path.exists(f"{srcSourceDir}/data/currentProfile.json"):
+
+        with open(f"{srcSourceDir}/data/currentProfile.json") as f:
+            selectedProfile = json.load(f)
+
+    else:
+        launcher = profileSelectUI()
+
+        if launcher.exec() != QDialog.Accepted:
+            sys.exit(0)
+
+        selectedProfile = launcher.getSelectedConfig()
+
+    startupSettings = selectedProfile["stored_data"]
+
+    settingsActivate(startupSettings)
+
+    if "DNS-over-HTTPS" in startupSettings:
+        updateDoHSettings(startupSettings["DNS-over-HTTPS"])
+
+    # NOW create the browser
+    window = Browser(profile_config=selectedProfile)
+    window.show()
+
     sys.exit(app.exec())

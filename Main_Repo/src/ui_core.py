@@ -18,8 +18,10 @@ icon_cache_dir.mkdir(exist_ok=True)
 
 srcSourceDir =  Path(__file__).parent
 
-with open (srcSourceDir / "data/actionToggles.json", "r") as f:
-            actionToggles = json.load(f)
+def loadActionToggles():
+    with open (srcSourceDir / "data/actionToggles.json", "r") as f:
+                actionToggles = json.load(f)
+    return actionToggles
 
 def get_normIcon(name):
     icon_path = icon_cache_dir / f"{name}"
@@ -46,6 +48,7 @@ class BarManager:
 
 
     def setup_tabs(self):
+        actionToggles = self.parent.settingsData
         if actionToggles["Tab-Position"] in ["North", "South"]:
             self.tabs = QTabWidget()
             self.tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
@@ -105,7 +108,7 @@ class BarManager:
 
         return self.nav_bar
 
-    def setup_statusbar(self):
+    def setup_statusbar(self, profile_icon=None, name=None):
         self.status_bar = QToolBar("Status")
         self.status_bar.setMovable(False)
         self.eColsStyle.append("status_bar")
@@ -139,8 +142,26 @@ class BarManager:
         self.zoomDisplay.clicked.connect(lambda: self.zoom_slider.setValue(100))
         self.zoom_slider.valueChanged.connect(lambda value: (self.zoomDisplay.setText(f"{value}%"), self.on_zoom_slider_moved(value)))
 
+        self.profileDisplay = QPushButton(name if name else "Ephemeral")
+        if profile_icon:
+            try:
+                print(f"Loading profile icon from: {profile_icon}")
+                image = QImage()
+                if image.load(str(profile_icon)):
+                    pixmap = QPixmap.fromImage(image)
+                    self.profileDisplay.setIcon(QIcon(pixmap))
+                    self.profileDisplay.setIconSize(QSize(16, 16))
+                else:
+                    print(f"Failed to load image from: {profile_icon}")
+            except Exception as e:
+                print(f"Error loading profile icon: {e}")
+        #is there a way to make this reopen the profile selection menu?
+        self.profileDisplay.clicked.connect(self.parent.open_profile_menu)
+
+
 
         #sets the displays to the bar
+        self.status_bar.addWidget(self.profileDisplay)
         self.status_bar.addWidget(self.zoom_slider)
         self.status_bar.addWidget(self.zoomDisplay)
         self.status_bar.addWidget(spacer)
@@ -162,8 +183,7 @@ class BarManager:
         self.zoomDisplay.setText(f"{value}%")
 
     def updateStatusBar(self):
-        with open(f"{srcSourceDir}/data/actionToggles.json", "r") as f:
-            settingsDataPull = dict(json.load(f))
+        settingsDataPull = self.parent.settingsData
         
         #time return - pulls from same system as new tab window display
         timeFormat = (settingsDataPull["Time-Display"])

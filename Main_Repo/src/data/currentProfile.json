@@ -1,0 +1,31 @@
+{
+    "Name": "Default 2",
+    "photoURL": "ui/profile_icons/default.png",
+    "stored_data": {
+        "DNS-over-HTTPS": "Cloudflare",
+        "Cookie-Prediction-Sensitivity": 2,
+        "Cookie-Accept/Deny-On-Leave": false,
+        "Save-Tabs-On-Restart": true,
+        "Tab-Position": "West",
+        "Top-Stack": [
+            "bookmarks_bar",
+            "nav_bar"
+        ],
+        "Bottom-Stack": [
+            "status_bar"
+        ],
+        "Hidden-Stack": [],
+        "Date-Display": [
+            "dddd, d MMMM",
+            true
+        ],
+        "Time-Display": "HH:mm:ss",
+        "Name": "MidnightGuard",
+        "Greeting": true,
+        "Blur": 10,
+        "Image-Url": "MainImageBackground.png",
+        "Colour-Theme": "Secured Blue",
+        "Utilise-QUIC-Browsing": false,
+        "DeGoogler": false
+    }
+}
