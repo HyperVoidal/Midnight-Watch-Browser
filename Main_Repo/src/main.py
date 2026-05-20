@@ -24,6 +24,7 @@ import uuid
 import base64
 import io
 import hashlib
+import shutil
 from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
@@ -348,13 +349,19 @@ class objectMasterBridge(QObject):
                 header, encoded = fileInfo["data"].split(",", 1)
                 file_bytes = base64.b64decode(encoded)
 
-                #Image upload sanitiser - make sure it's not a hidden attack (e.g. image.exe.png or some other non-image item)
+                #Image upload sanitiser - make sure it's not a hidden attack
                 try:
                     img = Image.open(io.BytesIO(file_bytes))
-                    img.verify()
+                    
+                    # For GIFs and other formats, just check the format is valid
+                    # Don't call verify() on GIFs as it can fail with animations
+                    if img.format and img.format.upper() in ['PNG', 'JPEG', 'GIF', 'BMP', 'WEBP']:
+                        # Format is valid, proceed with upload
+                        pass
+                    else:
+                        raise ValueError(f"Unsupported image format: {img.format}")
 
                     new_file_hash = hashlib.md5(file_bytes).hexdigest()
-
                     save_path = os.path.join(f"{srcSourceDir}/ui/images/", fileName)
 
                     if os.path.exists(save_path):
@@ -364,17 +371,19 @@ class objectMasterBridge(QObject):
                         if new_file_hash == existing_hash:
                             print("Attempted upload image present in files already! Defaulting to using current name")
                         else:
-                            random_suffix = uuid.uuid4().hex[:8] #generate random file addition to avoid overwrites if the users' pasted image is different
+                            random_suffix = uuid.uuid4().hex[:8]
                             name_part, extension = os.path.splitext(fileName)
                             fileName = f"{name_part}_{random_suffix}{extension}"
                             save_path = os.path.join(f"{srcSourceDir}/ui/images/", fileName)
 
-                    with open (save_path, "wb") as f:
+                    with open(save_path, "wb") as f:
                         f.write(file_bytes)
+                    
                     settingsData["Image-Url"] = fileName
+                    print(f"Successfully uploaded image: {fileName}")
                 
                 except Exception as e:
-                    print(f"Possible Security Alert, invalid image type? Error: {e}")
+                    print(f"Image upload failed: {e}")
 
             if dataHeader == "themeUpdate":
                 with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
@@ -566,15 +575,37 @@ class objectMasterBridge(QObject):
             
         else:
             return f"Error: Key: {str(key)} not found"
+
+    
+    @Slot(result=str)
+    def openFileDialog(self):
+        """Open native file dialog and return selected file path"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select Background Image",
+            f"{srcSourceDir}/ui/images",  # Starting directory
+            "Image Files (*.png *.jpg *.jpeg *.gif *.bmp *.webp);;All Files (*)"
+        )
+        return file_path if file_path else ""
         
 
-    #potential system to use later for the settings menu
-    """ @Slot(str, str)
-    def updateData(self, key, value):
-        #Generalised setter for JS to save settings
-        print(f"Updating {key} to {value}")
-        self.settings_data[key] = value
-        self.dataUpdated.emit(key, value) """
+    #Button deferred update system, call only on apply press to avoid overloading or potentially corrupting the main data storage file.
+    @Slot()
+    def applySettings(self):
+        """Call this when the Apply button is pressed in settings"""
+        settingsData = self.browser.settingsData
+        
+        #Update profileData json with new settings for current profile using ID
+        with open(f"{srcSourceDir}/data/profileData.json", "r") as f:
+            profileData = dict(json.load(f))
+        
+        if self.browser.currentProfileID and self.browser.currentProfileID in profileData:
+            profileData[self.browser.currentProfileID]["stored_data"] = settingsData
+            with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
+                json.dump(profileData, f, indent=4)
+            print(f"Settings applied and saved to profile ID: {self.browser.currentProfileID}")
+        else:
+            print(f"Warning: Profile ID {self.browser.currentProfileID} not found in profileData.json")
     
 
 class profileSelectUI(QDialog):
@@ -602,7 +633,7 @@ class profileSelectUI(QDialog):
         main_layout.setSpacing(20)
 
         # Title label
-        title = QLabel("Select Profile to Load Settings")
+        title = QLabel("Select Profile")
         title.setStyleSheet("""
             color: white;
             font-size: 20px;
@@ -641,37 +672,99 @@ class profileSelectUI(QDialog):
         self.buttonBox.setSpacing(15)
         self.buttonBox.setContentsMargins(40, 40, 40, 40)
 
+        self.buttonBox.addStretch()
+
+        #first button - create new icon button
+        #source ID as next value
+        id = int((next(reversed(self.profileData.keys())))[2:]) + 1 if self.profileData else 0
+        #source data for new profile from the default profile - grab from default or otherwise just add default values
+        stored_data = self.profileData["id0"]["stored_data"] if "id0" in self.profileData else {"DNS-over-HTTPS": "AdGuard","Cookie-Prediction-Sensitivity": 0,"Cookie-Accept/Deny-On-Leave": 0,"Save-Tabs-On-Restart": 0,"Tab-Position": "North","Top-Stack": ["nav_bar","bookmarks_bar"],"Bottom-Stack": ["status_bar"],"Hidden-Stack": [],"Date-Display": ["dddd, d MMMM",1],"Time-Display": "hh:mm AP","Name": "Default","Greeting": 1,"Blur": 10,"Image-Url": "MainImageBackground.png","Colour-Theme": "Secured Blue","Utilise-QUIC-Browsing": 1,"DeGoogler": 0}
+           
+        self.profileData[f"id{id}"] = {
+            "Name": "Add New Profile",
+            "photoURL": "ui/profile_icons/add_profile.png",
+            "stored_data": stored_data
+        }
+
         # Create buttons for each profile
         for i in range(len(self.profileData.keys())):
+
             profile_key = "id" + str(i)
             profile_name = self.profileData[profile_key]["Name"]
-            
-            btn = QPushButton(profile_name)
-            btn.setFixedSize(250, 80)
+            profile_photo = f'{srcSourceDir}/{self.profileData[profile_key]["photoURL"]}'
+
+            btn = QPushButton()
+            btn.setFixedSize(250,80)
+
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: rgb(60, 60, 75);
                     color: white;
-                    border: 2px solid rgb(63, 129, 255);
+                    border: 2px solid rgb(63,129,255);
                     border-radius: 8px;
                     font-size: 14px;
                     font-weight: bold;
                 }
+
                 QPushButton:hover {
-                    background-color: rgb(70, 70, 85);
-                    border: 2px solid rgb(96, 151, 253);
+                    background-color: rgb(70,70,85);
+                    border: 2px solid rgb(96,151,253);
                 }
+
                 QPushButton:pressed {
-                    background-color: rgb(50, 50, 65);
+                    background-color: rgb(50,50,65);
+                }
+
+                QPushButton QLabel {
+                    background: transparent;
+                    border: none;
+                    color: white;
                 }
             """)
-            btn.setToolTip(profile_name)
-            btn.clicked.connect(lambda checked=False, profile=profile_key: self.select_profile(profile))
-            
-            self.buttonBox.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
-            setattr(self, f"profile_{profile_key}", btn)
 
-        # Add stretch at the end to push buttons to top-center
+            btn.setToolTip(profile_name)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+            layout = QHBoxLayout(btn)
+            layout.setContentsMargins(8,0,8,0)
+            layout.setSpacing(0)
+
+            leftSpacer = QSpacerItem(
+                40,20,
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Minimum
+            )
+
+            rightSpacer = QSpacerItem(
+                40,20,
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Minimum
+            )
+
+            text = QLabel(profile_name)
+            text.setStyleSheet("""
+                color:white;
+                font-size:14px;
+                font-weight:bold;
+            """)
+            text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            icon = QLabel()
+            if os.path.exists(profile_photo) and profile_photo != f"{srcSourceDir}/ui/images/":
+                pixmap = QPixmap(profile_photo)
+                icon.setPixmap(pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+            layout.addItem(leftSpacer)
+            layout.addWidget(text)
+            layout.addItem(rightSpacer)
+            layout.addWidget(icon)
+            
+            if profile_name == "Add New Profile":
+                btn.clicked.connect(lambda checked=False, profile=profile_key: self.create_new_profile(profile))
+            else:
+                btn.clicked.connect(lambda checked=False, profile=profile_key: self.select_profile(profile))
+            self.buttonBox.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
         self.buttonBox.addStretch()
 
         scroll_area.setWidget(container)
@@ -682,12 +775,49 @@ class profileSelectUI(QDialog):
         self.selected_profile = profile_key
         self.accept()
 
+    def create_new_profile(self, profile_key):
+        dialog = NewProfileDialog(self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            profile_data = dialog.getData()
+
+            if profile_data and profile_data["name"]:
+
+                self.profileData[profile_key]["Name"] = profile_data["name"]
+
+                image_path = profile_data["photoURL"]
+
+                # fallback if none selected
+                if not image_path:
+                    image_path = f"{srcSourceDir}/ui/profile_icons/add_profile.png"
+
+                # optional: copy image into your app folder (recommended)
+                if os.path.exists(image_path):
+                    fileName = os.path.basename(image_path)
+                    save_path = os.path.join(srcSourceDir, "ui/profile_icons", fileName)
+
+                    if image_path != save_path:
+                        shutil.copy(image_path, save_path)
+
+                    self.profileData[profile_key]["photoURL"] = f"ui/profile_icons/{fileName}"
+                else:
+                    self.profileData[profile_key]["photoURL"] = "ui/profile_icons/add_profile.png"
+
+                with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
+                    json.dump(self.profileData, f, indent=4)
+
+                self.selected_profile = profile_key
+                self.accept()
+
+            else:
+                QMessageBox.warning(self, "Invalid Input", "Please enter a valid name.")
+
     def getSelectedConfig(self):
         if hasattr(self, 'selected_profile'):
-            return self.profileData[self.selected_profile]
-        print("sending profile data")
+            data = self.profileData[self.selected_profile].copy()
+            data["id"] = self.selected_profile
+            return data
         return None
-
 
 
 class Browser(QMainWindow):
@@ -707,6 +837,7 @@ class Browser(QMainWindow):
             json.dump(profileData, f, indent=4)
 
         self.settingsData = json.loads(json.dumps(profileData))
+        self.currentProfileID = profile_config.get("id", None)
 
         settingsActivate(self.settingsData)
 
@@ -1024,13 +1155,8 @@ class Browser(QMainWindow):
         with open(f"{srcSourceDir}/data/currentProfile.json","w") as f:
             json.dump(profile_config, f, indent=4)
 
+        QTimer.singleShot(800, lambda: QProcess.startDetached(sys.executable, sys.argv)) #give the system time to clean up service workers!
         QApplication.quit()
-
-        QProcess.startDetached(
-            sys.executable,
-            sys.argv
-        )
-
 
 
 
@@ -1719,6 +1845,11 @@ class Browser(QMainWindow):
                     text_rgb_str = f"rgb({self.contrast_qcolor.red()}, {self.contrast_qcolor.green()}, {self.contrast_qcolor.blue()})"
                     self.bookmarks_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
 
+                elif k == "status_bar":
+                    # set the status bar background color and text contrast
+                    bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
+                    text_rgb_str = f"rgb({self.contrast_qcolor.red()}, {self.contrast_qcolor.green()}, {self.contrast_qcolor.blue()})"
+                    self.status_bar.setStyleSheet(f"background: {bg_rgb_str}; color: {text_rgb_str}")
                 
             else:
                 #print(f"other: {k}")
@@ -1892,30 +2023,6 @@ class Browser(QMainWindow):
                 self.fullRestart(profile)
             
 
-'''Main execution loop'''
-
-""" if __name__ == "__main__":
-
-    scheme = QWebEngineUrlScheme(b"MidnightWatch")
-    scheme.setFlags(
-        QWebEngineUrlScheme.Flag.SecureScheme |
-        QWebEngineUrlScheme.Flag.LocalScheme |
-        QWebEngineUrlScheme.Flag.LocalAccessAllowed |
-        QWebEngineUrlScheme.Flag.CorsEnabled |
-        QWebEngineUrlScheme.Flag.FetchApiAllowed
-    )
-    QWebEngineUrlScheme.registerScheme(scheme)
-
-    settingsActivate(toggles)
-    app = QApplication(sys.argv)
-
-    #Trigger DNS over HTTPS System
-    if "DNS-over-HTTPS" in toggles.keys():
-        updateDoHSettings(toggles["DNS-over-HTTPS"])
-    window = Browser()
-    window.show()
-
-    sys.exit(app.exec()) """
     
 if __name__ == "__main__":
     # Register scheme FIRST - before QApplication or any dialogs
@@ -1934,11 +2041,14 @@ if __name__ == "__main__":
 
     # Show profile selector
     selectedProfile = None
+    handoff_path = f"{srcSourceDir}/data/currentProfile.json"
 
-    if os.path.exists(f"{srcSourceDir}/data/currentProfile.json"):
+    if os.path.exists(handoff_path):
 
-        with open(f"{srcSourceDir}/data/currentProfile.json") as f:
+        with open(handoff_path) as f:
             selectedProfile = json.load(f)
+        
+        os.remove(handoff_path)
 
     else:
         launcher = profileSelectUI()

@@ -1,12 +1,12 @@
 {
-    "DNS-over-HTTPS": "Cloudflare",
-    "Cookie-Prediction-Sensitivity": 2,
+    "DNS-over-HTTPS": "AdGuard",
+    "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny-On-Leave": false,
-    "Save-Tabs-On-Restart": true,
-    "Tab-Position": "West",
+    "Save-Tabs-On-Restart": false,
+    "Tab-Position": "North",
     "Top-Stack": [
-        "bookmarks_bar",
-        "nav_bar"
+        "nav_bar",
+        "bookmarks_bar"
     ],
     "Bottom-Stack": [
         "status_bar"
@@ -16,12 +16,12 @@
         "dddd, d MMMM",
         true
     ],
-    "Time-Display": "HH:mm:ss",
-    "Name": "MidnightGuard",
+    "Time-Display": "hh:mm AP",
+    "Name": "Default",
     "Greeting": true,
     "Blur": 10,
     "Image-Url": "MainImageBackground.png",
     "Colour-Theme": "Secured Blue",
-    "Utilise-QUIC-Browsing": false,
+    "Utilise-QUIC-Browsing": true,
     "DeGoogler": false
 }

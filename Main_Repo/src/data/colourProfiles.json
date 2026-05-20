@@ -8,14 +8,14 @@
         "forward_btn": "(75, 126, 215)",
         "home_btn": "(255, 235, 120)",
         "nav_bar": "(25, 45, 110)",
-        "status_bar": "(25, 45, 110)",
         "newtab_btn": "(55, 95, 175)",
         "pintabs_btn": "(255, 200, 65)",
         "reload_btn": "(60, 100, 180)",
         "settings_btn": "(15, 30, 60)",
         "tab_backer": "(25, 45, 110)",
         "tabs": "(15, 20, 45)",
-        "url_bar": "(15, 20, 45)"
+        "url_bar": "(15, 20, 45)",
+        "status_bar": "(25, 45, 110)"
     },
     "Pastel Breeze": {
         "back_btn": "(182, 220, 241)",

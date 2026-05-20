@@ -1,6 +1,5 @@
-
 {
-    "id0":    {
+    "id0": {
         "Name": "Default",
         "photoURL": "ui/profile_icons/default.png",
         "stored_data": {
@@ -29,9 +28,8 @@
             "Colour-Theme": "Secured Blue",
             "Utilise-QUIC-Browsing": true,
             "DeGoogler": false
-            }
-        },
-
+        }
+    },
     "id1": {
         "Name": "Default 2",
         "photoURL": "ui/profile_icons/default.png",
@@ -58,12 +56,11 @@
             "Greeting": true,
             "Blur": 10,
             "Image-Url": "MainImageBackground.png",
-            "Colour-Theme": "Secured Blue",
+            "Colour-Theme": "Pastel Breeze",
             "Utilise-QUIC-Browsing": false,
             "DeGoogler": false
-            }
+        }
     },
-
     "id2": {
         "Name": "Ephemeral",
         "photoURL": "",
@@ -94,7 +91,6 @@
             "Colour-Theme": "Secured Blue",
             "Utilise-QUIC-Browsing": false,
             "DeGoogler": false
-            }
+        }
     }
-
 }

@@ -28,6 +28,83 @@ def get_normIcon(name):
 
     return QIcon(str(icon_path))
 
+class NewProfileDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Create New Profile")
+        self.resize(400, 220)
+
+        self.image_path = ""
+
+        layout = QVBoxLayout(self)
+
+        # ----- Name -----
+        layout.addWidget(QLabel("Profile Name:"))
+
+        self.nameInput = QLineEdit()
+        self.nameInput.setPlaceholderText("Enter profile name...")
+        layout.addWidget(self.nameInput)
+
+        # ----- Image Selection -----
+        layout.addWidget(QLabel("Profile Image:"))
+
+        imgLayout = QHBoxLayout()
+
+        self.imagePreview = QLabel()
+        self.imagePreview.setFixedSize(64,64)
+        self.imagePreview.setStyleSheet("""
+            border: 1px solid gray;
+            background: transparent;
+        """)
+        self.imagePreview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.browseButton = QPushButton("Browse...")
+        self.browseButton.clicked.connect(self.selectImage)
+
+        imgLayout.addWidget(self.imagePreview)
+        imgLayout.addWidget(self.browseButton)
+
+        layout.addLayout(imgLayout)
+
+        # ----- OK / Cancel -----
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
+        )
+
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout.addWidget(buttons)
+
+    def selectImage(self):
+
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Profile Image",
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp *.bmp)"
+        )
+
+        if filepath:
+            self.image_path = filepath
+
+            pixmap = QPixmap(filepath)
+            pixmap = pixmap.scaled(
+                64,64,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+
+            self.imagePreview.setPixmap(pixmap)
+
+    def getData(self):
+        return {
+            "name": self.nameInput.text().strip(),
+            "photoURL": self.image_path
+        }
+
 class BarManager:
 
     def __init__(self, parent, eColsStyle, eColsButton):

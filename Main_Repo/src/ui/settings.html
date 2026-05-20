@@ -789,6 +789,76 @@
             background: transparent;
         }
 
+
+        /* Apply Settings Bar */
+        .apply-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to right, #505050, #505050);
+            padding: 16px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            transform: translateY(140px);
+            transition: transform 0.3s ease-in-out;
+            gap: 40px;
+            border-radius: 12px 12px 12px 12px;
+        }
+
+        .apply-bar.active {
+            transform: translateY(0);
+        }
+
+        .apply-bar-text {
+            color: white;
+            font-family: sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .apply-bar-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .apply-bar-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .cancel-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+
+        .cancel-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.6);
+        }
+
+        .confirm-btn {
+            background: #3f81ff;
+            color: rgba(255, 255, 255, 0.95);
+            border: none;
+        }
+
+        .confirm-btn:hover {
+            background: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
         
 
     </style>
@@ -1012,8 +1082,8 @@
                         <div id="bg-drop-area">
                             <form class="bgDragDropForm">
                                 <p>Drag and Drop or Click to Open Files</p>
-                                <input type="file" id="fileElem" accept="image/*" onchange="handleFiles(this.files)">
-                                <label class="button" for="fileElem">Select image...</label>
+                                <input type="file" id="fileElem" accept="image/*" onchange="handleFiles(this.files)" style="display:none;">
+                                <button type="button" class="button" onclick="openNativeFilePicker()">Select image...</button>
                             </form>
                             <div class='child-div' id="gallery"></div>
                         </div>
@@ -1171,6 +1241,14 @@
                                             <span class="colour-group-font" id="hexValueBOOKMARKS_BAR">#3f51b5</span>
                                         </div>
                                     </div>
+                                
+                                    <div class="colour-group-spacer">
+                                        <label>status_bar</label>
+                                        <div class="colour-group-mini-spacer">
+                                            <input type="color" value="#3f51b5" id="rgbInputSTATUS_BAR">
+                                            <span class="colour-group-font" id="hexValueSTATUS_BAR">#3f51b5</span>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div class="text-spacer"></div>
@@ -1180,7 +1258,7 @@
 
                                 <h5>Misc</h5>
                                 <div class="text-spacer"></div>
-
+                                <div class="colour-group">
                                     <div class="colour-group-spacer">
                                         <label>bookmark_btn</label>
                                         <div class="colour-group-mini-spacer">
@@ -1197,7 +1275,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                
+                                </div>
                             </div>
 
                         <aside class="theme-sidebar">
@@ -1340,12 +1418,22 @@
         
 
     </div>
+
+    <div id="applyBar" class="apply-bar">
+        <span class="apply-bar-text">You have unsaved changes</span>
+        <div class="apply-bar-buttons">
+            <button class="apply-bar-btn cancel-btn" onclick="dismissApplyBar()">Discard</button>
+            <button class="apply-bar-btn confirm-btn" onclick="confirmApplySettings()">Apply Settings</button>
+        </div>
+    </div>
 </body>
 
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script>
         let bgDropArea = document.getElementById('bg-drop-area');
         var requiredDropUrlHead;
+        let hasUnsavedChanges = false;
+        let applyBarTimeout;
 
         // Function to switch navigation tabs
         function switchTab(el, tabId) {
@@ -1361,13 +1449,14 @@
             document.getElementById('infoPanel').classList.remove('active');
         }
 
-        //This is entirely just for image uploads
+        //This is entirely just for image uploadsf
 
         function handleDrop(e) {
             let dt = e.dataTransfer
             let files = dt.files
 
             handleFiles(files)
+            dataSend();
         }
 
         function preventDefaults (e) {
@@ -1396,6 +1485,7 @@
 
                 Array.from(files).forEach(uploadFile);
             }
+            dataSend();
         }   
 
 
@@ -1473,6 +1563,21 @@
 
         };
 
+        function openNativeFilePicker() {
+            window.bridge.openFileDialog((filePath) => {
+                if (filePath) {
+                    // Read the file and process it
+                    fetch('file:///' + filePath.replace(/\\/g, '/'))
+                        .then(response => response.blob())
+                        .then(blob => {
+                            const file = new File([blob], filePath.split(/[\\/]/).pop(), { type: blob.type });
+                            handleFiles([file]);
+                        })
+                        .catch(err => console.error("File read error:", err));
+                }
+            });
+        }
+
         function toggleDropdown(headerElement) {
             const parent = headerElement.parentElement;
 
@@ -1495,7 +1600,8 @@
             //log changes. Try to pull settingType out for bridge changes and use data-setting defined in the dropdown-container class to locate which setting is being updated specifically
             const settingType = parent.getAttribute('data-setting'); 
             console.log(`Setting for ${settingType} changed to ${text}`);
-            window.bridge.receiveData([settingType, text]);
+            window.bridge.receiveData([settingType, text])
+            dataSend();
         }
 
         function allowDrop(tabDragDropElement) {
@@ -1532,6 +1638,7 @@
             });
 
             window.bridge.receiveData(["Stacks", JSON.stringify(fullState)]);
+            dataSend();
         }
 
         function applyThemeColors() {
@@ -1562,6 +1669,7 @@
             // Send the signal via bridge
             if (window.bridge) {
                 window.bridge.receiveData(["themeUpdate", colourDataOutput]);
+                confirmApplySettings(); //auto-confirm changes after applying theme, since it's a more explicit action and less likely to be accidental than other changes
             }
             
             // Visual feedback
@@ -1718,9 +1826,12 @@
                     if (component.className === "slider") {
                         bridge_name.receiveData([String(data_ID), component.value]);
                         component.blur(); //unfocus component after release
+                        dataSend();
                     } else if (component.type === "checkbox" || component.classList.contains("checkmark")) {
                         bridge_name.receiveData([String(data_ID), component.checked]);
+                        dataSend();
                     }
+                    
                 })
                 
                 //input text sanitiser for text entry boxes
@@ -1754,6 +1865,7 @@
                         component.blur();
                         component.placeholder = component.value
                         component.value = ""
+                        dataSend();
                     }
                 })
 
@@ -1766,6 +1878,7 @@
                         if (hexSpan) {
                             hexSpan.innerText = component.value.toUpperCase();
                         }
+                        dataSend();
                     });
                 }
 
@@ -1912,6 +2025,45 @@
         setInterval(updateElements, 1000)
         });
 
+        
+        function showApplyBar() {
+            hasUnsavedChanges = true;
+            const bar = document.getElementById('applyBar');
+            bar.classList.add('active');
+            
+            // Auto-hide after 10 seconds if not interacted with
+            clearTimeout(applyBarTimeout);
+            applyBarTimeout = setTimeout(() => {
+                if (hasUnsavedChanges) {
+                    dismissApplyBar();
+                }
+            }, 10000);
+        }
+
+        function dismissApplyBar() {
+            hasUnsavedChanges = false;
+            const bar = document.getElementById('applyBar');
+            bar.classList.remove('active');
+            clearTimeout(applyBarTimeout);
+        }
+
+        function confirmApplySettings() {
+            if (window.bridge) {
+                window.bridge.applySettings();
+                dismissApplyBar();
+                
+                // Optional: Visual feedback
+                const btn = document.querySelector('.confirm-btn');
+                const originalText = btn.textContent;
+                btn.textContent = "Applied!";
+                setTimeout(() => btn.textContent = originalText, 2000);
+            }
+        }
+
+        // Replace your existing dataSend function
+        function dataSend() {
+            showApplyBar();
+        }
 
     </script>
     
