@@ -1,5 +1,5 @@
 {
-    "DNS-over-HTTPS": "AdGuard",
+    "DNS-over-HTTPS": "Default",
     "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny-On-Leave": false,
     "Save-Tabs-On-Restart": false,

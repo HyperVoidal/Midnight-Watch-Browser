@@ -309,7 +309,7 @@ class BarManager:
         date_width = date_metrics.horizontalAdvance(date_text) + 16
         self.dateBox.setFixedWidth(date_width)
     
-    def setup_bookmarksbar(self):
+    def setup_bookmarksbar(self, bookmarksData):
         self.bookmarks_bar = QToolBar("Bookmarks")
         self.bookmarks_bar.setMovable(False)
         self.bookmarks_bar.setStyleSheet("background:rgb(1, 1, 100)")
@@ -317,8 +317,7 @@ class BarManager:
         self.eColsButton.append("bookmarks_btn")
 
         try:
-            with open (f"{srcSourceDir}/data/bookmarks.json", "r") as f:
-                bookmarkData = dict(json.load(f))
+            bookmarkData = bookmarksData
             
             for bid, data in bookmarkData.items():
                 name = data["name"]
@@ -343,7 +342,7 @@ class BarManager:
 
                 #Right click context menu 
                 Bbutton.setContextMenuPolicy(Qt.CustomContextMenu)
-                Bbutton.customContextMenuRequested.connect(partial(self.show_bookmark_menu, Bbutton, bid))
+                Bbutton.customContextMenuRequested.connect(partial(self.show_bookmark_menu, Bbutton, bid, bookmarkData))
 
                 self.bookmarks_bar.addAction(Bbutton_action)
 
@@ -352,11 +351,10 @@ class BarManager:
 
         return self.bookmarks_bar
     
-    def show_bookmark_menu(self, button, bid, pos):
+    def show_bookmark_menu(self, button, bid, pos, bookmarksData):
         menu = QMenu()
 
-        with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
-            data = json.load(f)
+        data = bookmarksData
 
         bookmark = data[bid]
         name = bookmark["name"]
@@ -376,10 +374,9 @@ class BarManager:
             if new_name:
                 data[bid]["name"] = new_name
 
-                with open(f"{srcSourceDir}/data/bookmarks.json", "w") as f:
-                    json.dump(data, f, indent=4)
+                bookmarkData = data
 
-                self.refresh_bookmarksbar()
+                self.refresh_bookmarksbar(bookmarkData)
 
         elif action == delete:
             self.parent.remove_bookmark(bid)
@@ -387,12 +384,10 @@ class BarManager:
         elif action == open_tab:
             self.parent.add_new_tab(qurl=url, label=name)
 
-    def refresh_bookmarksbar(self):
+    def refresh_bookmarksbar(self, bookmarksData):
         self.bookmarks_bar.clear()
         try:
-            with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
-                bookmarkData = json.load(f)
-
+            bookmarkData = bookmarksData
             for bid, data in bookmarkData.items():
                 name = data["name"]
                 url = data["url"]
@@ -426,7 +421,7 @@ class BarManager:
 
             #link to right click context menu after refreshing
             btn.setContextMenuPolicy(Qt.CustomContextMenu)
-            btn.customContextMenuRequested.connect(partial(self.show_bookmark_menu, btn, bid))
+            btn.customContextMenuRequested.connect(partial(self.show_bookmark_menu, btn, bid, bookmarkData))
         except (json.decoder.JSONDecodeError, UnboundLocalError):
             print("Can't refresh bookmarks as none exist in the json file!")
             pass

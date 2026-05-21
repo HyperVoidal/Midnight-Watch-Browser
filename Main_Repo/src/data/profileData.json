@@ -2,8 +2,15 @@
     "id0": {
         "Name": "Default",
         "photoURL": "ui/profile_icons/default.png",
+        "saved_tabs": {},
+        "saved_bookmarks": {
+            "f427596c-b7c2-4ed3-8add-4bd71abfd36e": {
+                "name": "test27 - Brave Search",
+                "url": "https://search.brave.com/search?q=test27"
+            }
+        },
         "stored_data": {
-            "DNS-over-HTTPS": "AdGuard",
+            "DNS-over-HTTPS": "Default",
             "Cookie-Prediction-Sensitivity": 0,
             "Cookie-Accept/Deny-On-Leave": false,
             "Save-Tabs-On-Restart": false,
@@ -33,9 +40,16 @@
     "id1": {
         "Name": "Default 2",
         "photoURL": "ui/profile_icons/default.png",
+        "saved_tabs": {},
+        "saved_bookmarks": {
+            "421a5ee3-7b29-4fbd-bf45-dac9e1b3323a": {
+                "name": "test search 2 - Brave Search",
+                "url": "https://search.brave.com/search?q=test+search+2"
+            }
+        },
         "stored_data": {
-            "DNS-over-HTTPS": "Cloudflare",
-            "Cookie-Prediction-Sensitivity": 2,
+            "DNS-over-HTTPS": "Default",
+            "Cookie-Prediction-Sensitivity": 1,
             "Cookie-Accept/Deny-On-Leave": false,
             "Save-Tabs-On-Restart": true,
             "Tab-Position": "West",
@@ -64,6 +78,8 @@
     "id2": {
         "Name": "Ephemeral",
         "photoURL": "",
+        "saved_tabs": {},
+        "saved_bookmarks": {},
         "stored_data": {
             "DNS-over-HTTPS": "Default",
             "Cookie-Prediction-Sensitivity": 4,

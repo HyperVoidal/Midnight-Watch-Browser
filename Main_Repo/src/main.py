@@ -67,6 +67,21 @@ eColsStyle = []
 
 
 # ---- MAIN FUNCTIONS ----
+
+def saveData(profileID, profileConfig):
+    with open(f"{srcSourceDir}/data/profileData.json", "r") as f:
+        profileData = dict(json.load(f))
+    
+    if profileID in profileData:
+        profileData[profileID] = profileConfig
+        profileData[profileID].pop("id", None)
+        with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
+            json.dump(profileData, f, indent=4)
+        print(f"Settings applied and saved to profile ID: {profileID}")
+    else:
+        print(f"Warning: Profile ID {profileID} not found in profileData.json")
+
+
 def updateDoHSettings(provider):
     doh_providers = {
         "Default": {
@@ -608,6 +623,9 @@ class objectMasterBridge(QObject):
             print(f"Warning: Profile ID {self.browser.currentProfileID} not found in profileData.json")
     
 
+    
+
+
 class profileSelectUI(QDialog):
     def __init__(self):
         super().__init__()
@@ -820,6 +838,10 @@ class profileSelectUI(QDialog):
         return None
 
 
+
+
+
+
 class Browser(QMainWindow):
     def __init__(self, profile_config: dict):
         super().__init__()
@@ -832,6 +854,10 @@ class Browser(QMainWindow):
 
         #update main loader json file with the info selected from the profile
         profileData = profile_config["stored_data"]
+        self.profile_config = profile_config
+
+        self.is_restarting = False
+        self.pending_restart = False
 
         with open(f"{srcSourceDir}/data/actionToggles.json","w") as f:
             json.dump(profileData, f, indent=4)
@@ -933,7 +959,7 @@ class Browser(QMainWindow):
 
         self.nav_bar = self.barManager.setup_navbar()
 
-        self.bookmarks_bar = self.barManager.setup_bookmarksbar()
+        self.bookmarks_bar = self.barManager.setup_bookmarksbar(self.profile_config["saved_bookmarks"])
 
         self.status_bar = self.barManager.setup_statusbar(profile_icon=f"{srcSourceDir}/{profile_config['photoURL']}", name=profile_config["Name"])
 
@@ -1104,8 +1130,7 @@ class Browser(QMainWindow):
         #Load all tabs from most recent shutdown if possible
         if saveTabsOnRestart:
             try:
-                with open(f"{srcSourceDir}/data/bootupTabs.json", "r") as f:
-                    savetabs = json.load(f)
+                savetabs = self.profile_config["saved_tabs"]
                     
                 for url, title in savetabs.items():
                     self.add_new_tab(QUrl(url), title)
@@ -1124,40 +1149,39 @@ class Browser(QMainWindow):
         self.update_tab_icon(self.current_browser)
 
     def shutdown_Systems(self, restart=False):
+            
         if saveTabsOnRestart:
-            #save all urls to a json file for attempted re-opening on browser start
             savetabs = {}
-            for tab in range (self.tabs.count()):
-                if "midnightwatch://" in self.tabs.widget(tab).url().toString():
-                    pass #Skip custom url scheme pages
-                else:
+            for tab in range(self.tabs.count()):
+                if "midnightwatch://" not in self.tabs.widget(tab).url().toString():
                     savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
-                    print(f"Saving: {str(self.tabs.tabText(tab))}")
-
-            with open(f"{srcSourceDir}/data/bootupTabs.json", "w") as f:
-                json.dump(savetabs, f, indent=4)
-
-        # Clean up all remaining pages before closing to prevent profile release errors
-        for tab_index in range(self.tabs.count()):
-            browser = self.tabs.widget(tab_index)
-            if browser and hasattr(browser, 'page') and browser.page():
-                browser.page().deleteLater()
+            
+            self.profile_config["saved_tabs"] = savetabs
+            
+            #Update profileData json with new settings for current profile using ID
+            saveData(self.currentProfileID, self.profile_config)
 
         self.restart_requested = restart
         #Clear HTTP cache to avoid potential clientside injection attacks
         self.profile.clearHttpCacheCompleted.connect(self.finish_shutdown)
         self.profile.clearHttpCache()
-
-    def finish_shutdown(self):
-            QApplication.quit()
+        #extra assurance shutdown command to avoid hanging on shutdown in case of httpcache clear failure
+        QTimer.singleShot(3000, self.finish_shutdown)
 
     def fullRestart(self, profile_config):
+        self.is_restarting = True
+        self.pending_restart = True
+        print("FULL RESTART CALLED")
         with open(f"{srcSourceDir}/data/currentProfile.json","w") as f:
             json.dump(profile_config, f, indent=4)
+        
+        self.shutdown_Systems()
 
-        QTimer.singleShot(800, lambda: QProcess.startDetached(sys.executable, sys.argv)) #give the system time to clean up service workers!
+    def finish_shutdown(self):
+        if getattr(self,"pending_restart", False):
+            print("STARTDETACHED FIRING")
+            QProcess.startDetached(sys.executable, sys.argv)
         QApplication.quit()
-
 
 
 
@@ -1462,7 +1486,7 @@ class Browser(QMainWindow):
 
     def update_tab_sizes(self):
         #Guard clause to only run these updates if the user is on a horizontal tab system
-        if self.settingsData["Tab-Position"] in ["East", "West"]:
+        if ["Tab-Position"] in ["East", "West"]:
             return
         tab_width = self.calculate_tab_width()
         tabbar = self.tabs.tabBar()
@@ -1541,8 +1565,7 @@ class Browser(QMainWindow):
         with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
             Colourdata = json.load(f)
         try:
-            with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
-                bookmarkData = json.load(f)
+            bookmarkData = self.profile_config["saved_bookmarks"]
 
             #load bookmarks and compare against normalised
             normalised_bookmarks = {bid: self.UrlManager.normalise_url(data["url"]) for bid, data in bookmarkData.items()}
@@ -1635,8 +1658,7 @@ class Browser(QMainWindow):
             return
         
         try:
-            with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
-                data = json.load(f)
+            data = self.profile_config["saved_bookmarks"]
         except:
             data = {}
 
@@ -1647,24 +1669,23 @@ class Browser(QMainWindow):
             "url": url
         }
 
-        with open(f"{srcSourceDir}/data/bookmarks.json", "w") as f:
-            json.dump(data, f, indent=4)
+        self.profile_config["saved_bookmarks"] = data
 
         #reload bookmarks bar to show new bookmark
-        self.barManager.refresh_bookmarksbar()
+        self.barManager.refresh_bookmarksbar(self.profile_config["saved_bookmarks"])
         self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
+        saveData(self.currentProfileID, self.profile_config)
 
     def remove_bookmark(self, id):
-        with open(f"{srcSourceDir}/data/bookmarks.json", "r") as f:
-            data = json.load(f)
+        data = self.profile_config["saved_bookmarks"]
 
         del data[id]
 
-        with open(f"{srcSourceDir}/data/bookmarks.json", "w") as f:
-            json.dump(data, f, indent=4)
+        self.profile_config["saved_bookmarks"] = data
         
-        self.barManager.refresh_bookmarksbar()
+        self.barManager.refresh_bookmarksbar(self.profile_config["saved_bookmarks"])
         self.update_url_bar_buttons(self.current_browser.url().toString(), self.current_browser)
+        saveData(self.currentProfileID, self.profile_config)
 
     
 
@@ -2010,8 +2031,7 @@ class Browser(QMainWindow):
                     if "midnightwatch://" not in self.tabs.widget(tab).url().toString():
                         savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
                 
-                with open(f"{srcSourceDir}/data/bootupTabs.json", "w") as f:
-                    json.dump(savetabs, f, indent=4)
+                self.profile_config["saved_tabs"] = savetabs
             
             # Close current browser window
             launcher = profileSelectUI()
