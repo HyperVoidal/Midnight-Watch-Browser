@@ -1,5 +1,5 @@
 {
-    "DNS-over-HTTPS": "Default",
+    "DNS-over-HTTPS": "Cloudflare Secure",
     "Cookie-Prediction-Sensitivity": 0,
     "Cookie-Accept/Deny-On-Leave": false,
     "Save-Tabs-On-Restart": false,
@@ -23,5 +23,7 @@
     "Image-Url": "MainImageBackground.png",
     "Colour-Theme": "Secured Blue",
     "Utilise-QUIC-Browsing": true,
-    "DeGoogler": false
+    "DeGoogler": false,
+    "Dns-Fallback": true,
+    "GPU-Safe-System": true
 }

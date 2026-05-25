@@ -1,17 +1,15 @@
 import sys
 import warnings
 import PySide6
-from PySide6.QtCore import QUrl, QObject, Slot, QDateTime
 from PySide6.QtGui import *
 from PySide6.QtWidgets import *
-from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineUrlScheme, QWebEngineUrlSchemeHandler, qWebEngineChromiumVersion
-from PySide6.QtWidgets import QCheckBox
+from PySide6.QtWebEngineWidgets import *
+from PySide6.QtWebEngineCore import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
-from PySide6.QtNetwork import QNetworkCookie, QNetworkCookieJar, QNetworkAccessManager
-from PySide6.QtWebEngineCore import QWebEngineCookieStore, QWebEngineGlobalSettings
-from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtNetwork import *
+from PySide6.QtWebEngineCore import *
+from PySide6.QtWebChannel import *
 from urllib.parse import urlparse
 from pathlib import Path
 import requests
@@ -25,10 +23,12 @@ import base64
 import io
 import hashlib
 import shutil
+import plyer
+from plyer import notification
 from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
-
+from backgroundProcessHandler import SecureDnsMonitor, GPULogMonitor
 
 print("PyQt6 Version: " + PySide6.__version__)
 print("Internal Chromium Version: " + qWebEngineChromiumVersion())
@@ -60,10 +60,47 @@ for key, value in engineData.items():
 #print("ENGINES LIST FROM JSON: ", engines)
 print("Startup Selected Engine: ", engine)
 
-#setText names
+#Variable initialisation
 global eColsButton, eColsStyle
 eColsButton = []
 eColsStyle = []
+
+doh_providers = {
+        "Default": {
+            "url": ""
+        }, #No DoH
+        "Cloudflare": {
+            "url": "https://cloudflare-dns.com/dns-query"
+        }, #Secure but no additional systems
+        "Cloudflare Secure": {
+            "url": "https://security.cloudflare-dns.com/dns-query"
+        }, #Cloudflare system but with additional malware/phishing blocking
+        "Google Public DNS": {
+            "url": "https://dns.google/dns-query"
+        }, #Fastest and most accessible but less secure
+        "AdGuard": {
+            "url": "https://dns.adguard-dns.com/dns-query"
+        }, #Slower but adds an additional ad/tracker blocker
+        "AdGuard Family": {
+            "url": "https://family.adguard-dns.com/dns-query"
+        }, #Adguard system but with additional adult content filters
+        #Various other dns points sourced from IronFox's list of trusted DoH providers!
+        "Mullvad Default": {
+            "url": "https://dns.mullvad.net/dns-query"
+        },
+        "Mullvad Unfiltered": {
+            "url": "https://dns.mullvad.net/dns-query"
+        },
+        "DNS4EU (AdBlock)": {
+            "url": "https://noads.joindns4.eu/dns-query"
+        },
+        "DNS4EU (Protective)": {
+            "url": "https://protective.joindns4.eu/dns-query"
+        },
+        "DNS4EU (Unfiltered)": {
+            "url": "https://unfiltered.joindns4.eu/dns-query"
+        }
+    }
 
 
 # ---- MAIN FUNCTIONS ----
@@ -82,37 +119,20 @@ def saveData(profileID, profileConfig):
         print(f"Warning: Profile ID {profileID} not found in profileData.json")
 
 
-def updateDoHSettings(provider):
-    doh_providers = {
-        "Default": {
-            "mode": QWebEngineGlobalSettings.SecureDnsMode.SystemOnly, 
-            "url": ""
-        }, #No DoH
-        "Cloudflare": {
-            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
-            "url": "https://cloudflare-dns.com/dns-query"
-        }, #Secure but no additional systems
-        "Google Public DNS": {
-            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
-            "url": "https://dns.google/dns-query/dns-query"
-        }, #Fastest and most accessible but less secure
-        "AdGuard": {
-            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
-            "url": "https://dns.adguard-dns.com/dns-query"
-        }, #Slower but adds an additional ad/tracker blocker
-        "AdGuard Family": {
-            "mode": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly, 
-            "url": "https://family.adguard-dns.com/dns-query"
-        } #Adguard system but with additional adult content filters
-    }
-
+def updateDoHSettings(provider, dataStorage):
     if provider not in doh_providers:
         print(f"Error: Unknown provider '{provider}'")
         return False
 
     config = doh_providers[provider]
     dns_settings = QWebEngineGlobalSettings.DnsMode()
-    dns_settings.secureMode = config["mode"]
+    if provider == "Default":
+        dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SystemOnly
+    else:
+        if dataStorage["Dns-Fallback"] == True:
+            dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureWithFallback
+        else:
+            dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureOnly
 
     if config["url"]:
         dns_settings.serverTemplates = [config["url"]]
@@ -138,6 +158,10 @@ def settingsActivate(toggles):
         #allows DNS over HTTPS system
         "--enable-features=DnsOverHttps ", 
         "--force-fieldtrials=AsyncDns/Enabled",
+        #enables logging to be output
+        #"--enable-logging=stderr",
+        #"--v=1"
+        "--log-level=3"
         ]
 
     if "Cookie-Prediction-Sensitivity" in toggles.keys():
@@ -157,7 +181,11 @@ def settingsActivate(toggles):
             "--enable-quic",
             "--origin-to-force-quic-on=cloudflare-quic.com:443"
         ])
-    
+    if toggles["GPU-Safe-System"]:
+        chromiumFlags.extend([
+            "--disable-accelerated-video-decode"
+        ])
+
     if toggles["DeGoogler"] == True:
         #Disable all screened google flags that allow for a degoogled experience without compromising security too much. This is intneded to be a power-user feature that removes google alongside their inbuilt user protections under the assumption that the user knows what they're doing
         chromiumFlags.extend([
@@ -247,6 +275,38 @@ def ensure_webchannel_js(target_dir):
                 f.write(content)
             resource_file.close()
 
+# Management for chromium flag observations to protect users in case of encoded video playback failure
+FatalGPUPatterns = {
+    "CONTEXT_LOST_WEBGL": 5,
+    "SharedImageManager::ProduceSkia": 8,
+    "Trying to make lost context current": 3,
+    "MailboxVideoFrameConverter": 4,
+    "NativeSkiaOutputDevice": 3,
+}
+PATTERN_STRING = "|".join(re.escape(key) for key in FatalGPUPatterns.keys())
+GPU_ERROR_REGEX = re.compile(PATTERN_STRING)
+GPUErrorMonitor = GPULogMonitor(time_window=5.0, severity_threshold=10, error_regex=GPU_ERROR_REGEX, fatalPatterns=FatalGPUPatterns)
+
+def qt_message_router(msg_type, context, message):
+    if "error -101" in message or "SSL" in message or "net::ERR_CONNECTION_REFUSED" in message:
+        return
+
+    if msg_type in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg):
+        GPUErrorMonitor.process_line(message)
+    
+    if msg_type == QtMsgType.QtDebugMsg:
+        print(f"Debug: {message}")
+    elif msg_type == QtMsgType.QtWarningMsg:
+        print(f"Warning: {message}")
+    elif msg_type == QtMsgType.QtCriticalMsg:
+        print(f"Critical: {message}")
+    elif msg_type == QtMsgType.QtFatalMsg:
+        print(f"Fatal: {message}")
+        sys.exit(-1)
+
+
+
+
 class objectMasterBridge(QObject):
     # Signal to push updates to JS (like a ticking clock or settings change)
     dataUpdated = Signal(str, str) # (key, value)
@@ -295,7 +355,7 @@ class objectMasterBridge(QObject):
                 settingsData["DNS-over-HTTPS"] = str(dataValue)
 
                 #Trigger informational changes
-                updateDoHSettings(str(dataValue))
+                updateDoHSettings(str(dataValue), settingsData)
 
             if dataHeader == "TabCloseCookieAction": 
                 settingsData["Cookie-Accept/Deny-On-Leave"] = (str(dataValue).lower() == "true")
@@ -357,6 +417,13 @@ class objectMasterBridge(QObject):
             
             if dataHeader == "DeGoogler":
                 settingsData["DeGoogler"] = (str(dataValue).lower() == "true")
+
+            if dataHeader == "DnsFallback":
+                settingsData["Dns-Fallback"] = (str(dataValue).lower() == "true")
+                updateDoHSettings(settingsData["DNS-over-HTTPS"], settingsData)
+
+            if dataHeader == "GPUSafeSystem":
+                settingsData["GPU-Safe-System"] = (str(dataValue).lower() == "true")
             
             if dataHeader == "imageUpload":
                 fileInfo = dataValue
@@ -587,6 +654,12 @@ class objectMasterBridge(QObject):
 
         elif key == "DeGoogler": 
             return str(settingsData["DeGoogler"])  
+
+        elif key == "DnsFallback":
+            return str(settingsData["Dns-Fallback"])
+
+        elif key == "GPUSafeSystem":
+            return str(settingsData["GPU-Safe-System"])
             
         else:
             return f"Error: Key: {str(key)} not found"
@@ -605,23 +678,20 @@ class objectMasterBridge(QObject):
         
 
     #Button deferred update system, call only on apply press to avoid overloading or potentially corrupting the main data storage file.
-    @Slot()
-    def applySettings(self):
-        """Call this when the Apply button is pressed in settings"""
+    @Slot(bool)
+    def applySettings(self, shouldReload=False):
+
         settingsData = self.browser.settingsData
-        
-        #Update profileData json with new settings for current profile using ID
-        with open(f"{srcSourceDir}/data/profileData.json", "r") as f:
-            profileData = dict(json.load(f))
-        
-        if self.browser.currentProfileID and self.browser.currentProfileID in profileData:
-            profileData[self.browser.currentProfileID]["stored_data"] = settingsData
-            with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
-                json.dump(profileData, f, indent=4)
-            print(f"Settings applied and saved to profile ID: {self.browser.currentProfileID}")
-        else:
-            print(f"Warning: Profile ID {self.browser.currentProfileID} not found in profileData.json")
-    
+
+        # update live profile config
+        self.browser.profile_config["stored_data"] = settingsData
+
+        # persist to profileData.json
+        saveData(self.browser.currentProfileID, self.browser.profile_config)
+
+        if shouldReload:
+            self.browser.fullRestart(triggerCloseEvent = False, profile_config=self.browser.profile_config.copy())
+            
 
     
 
@@ -635,6 +705,54 @@ class profileSelectUI(QDialog):
 
         with open(f"{srcSourceDir}/data/profileData.json", "r") as f:
             self.profileData = dict(json.load(f))
+
+        self.chosenProfile = None
+        self.lastSelectedProfile = None
+
+        self.profile_buttons = {}
+
+        self.NormalStyle = """
+            QPushButton {
+                background-color: rgb(60,60,75);
+                color:white;
+                border:2px solid rgb(63,129,255);
+                border-radius:25px;
+                font-size:14px;
+                font-weight:bold;
+            }
+
+            QPushButton:hover {
+                background-color: rgb(70,70,85);
+                border:2px solid rgb(96,151,253);
+            }
+
+            QPushButton QLabel {
+                background: transparent;
+                border: none;
+                color: white;
+            }
+            """
+
+        self.SelectedStyle = """
+            QPushButton {
+                background-color: rgb(85,105,160);
+                color:white;
+                border:4px solid #3f81ff;
+                border-radius:25px;
+                font-size:14px;
+                font-weight:bold;
+            }
+
+            QPushButton:hover {
+                background-color: rgb(100,120,180);
+            }
+
+            QPushButton QLabel {
+                background: transparent;
+                border: none;
+                color: white;
+            }
+            """
 
         self.init_ui()
 
@@ -685,11 +803,226 @@ class profileSelectUI(QDialog):
         # Container widget with centered layout
         container = QWidget()
         container.setStyleSheet("background-color: rgb(45, 45, 60);")
-        self.buttonBox = QVBoxLayout(container)
+        self.buttonBox = QHBoxLayout(container)
         self.buttonBox.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.buttonBox.setSpacing(15)
         self.buttonBox.setContentsMargins(40, 40, 40, 40)
 
+        self.populate_profile_buttons()
+
+        scroll_area.setWidget(container)
+        main_layout.addWidget(scroll_area, 1)
+
+
+
+
+        self.selectionContainer = QWidget()
+        self.selectionContainer.setStyleSheet("""
+            border: 2px solid #3f81ff;
+            border-radius: 30px;
+            """)
+        self.selectionContainer.setFixedHeight(125)
+        self.selectBox = QVBoxLayout(self.selectionContainer)
+        self.selectBox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.selectBox.setSpacing(10)
+        self.selectBox.setContentsMargins(200, 10, 200, 10)
+
+        # Create a horizontal layout for the three buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(20)  # Adjust space between buttons
+
+        # Create three buttons
+        btn1 = QPushButton("Select Profile")
+        btn1.clicked.connect(lambda checked=False: self.select_profile())
+        btn2 = QPushButton("Edit Profile")
+        btn2.clicked.connect(lambda checked=False: self.edit_profile())
+        btn3 = QPushButton("Delete Profile")
+        btn3.clicked.connect(lambda checked=False: self.delete_profile())
+
+        # Set common size
+        for btn in (btn1, btn2, btn3):
+            btn.setFixedSize(200, 75)
+            btn.setStyleSheet("""
+                              QPushButton {
+                                background-color: rgb(60, 60, 75); 
+                                color: white; font-weight: bold; font-size:15px; border-radius:15px;
+                                }
+                              QPushButton:hover {
+                                background-color: rgb(70,70,85);
+                                border: 2px solid rgb(96,151,253);
+                                }""")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        btn1.setStyleSheet("""
+                           QPushButton{
+                            background-color: #3f81ff; 
+                            color: white; 
+                            font-weight: bold; 
+                            font-size:15px; 
+                            border-radius:15px;
+                            }
+                           QPushButton:hover {
+                           background-color: #7ba9fd;
+                           border: 2px solid rgb(96,151,253);
+                           }""")
+
+        # Add buttons to the horizontal layout        
+        button_layout.addWidget(btn3)
+        button_layout.addWidget(btn2)
+        button_layout.addWidget(btn1)
+
+        # Add the horizontal layout to the main vertical layout
+        self.selectBox.addLayout(button_layout)   
+
+
+        self.selectorHolder = QWidget()
+        self.selectorHolder.setMaximumHeight(0)
+
+        holder_layout = QVBoxLayout(self.selectorHolder)
+        holder_layout.setContentsMargins(0,0,0,0)
+
+        holder_layout.addWidget(self.selectionContainer)
+
+        main_layout.addWidget(self.selectorHolder)
+
+        self.animation = QPropertyAnimation(
+            self.selectorHolder,
+            b"maximumHeight"
+        )
+
+        self.animation.setDuration(300)
+
+    def summonSelector(self, profile_key):
+
+        if profile_key == self.lastSelectedProfile:
+            self.animation.setStartValue(145)
+            self.animation.setEndValue(0)
+
+            self.chosenProfile = None
+            self.lastSelectedProfile = None
+
+        else:
+            self.animation.setStartValue(0)
+            self.animation.setEndValue(145)   # slightly bigger than container
+
+            self.chosenProfile = profile_key
+            self.lastSelectedProfile = profile_key
+
+        self.updateSelectedButton()
+        self.animation.start()
+
+    def select_profile(self):
+        """Handle profile selection"""
+        self.selected_profile = self.chosenProfile
+        self.accept()
+
+    def edit_profile(self):
+        dialog = NewProfileDialog(self, 
+                                  title=f"Edit Profile {self.profileData[self.chosenProfile]["Name"]}", 
+                                  placeholder=f"Previously: '{self.profileData[self.chosenProfile]["Name"]}'", 
+                                  image = srcSourceDir/self.profileData[self.chosenProfile]["photoURL"],
+                                  image_text = "Current Profile Image:")
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            returned_data = dialog.getData()
+            self.profileData[self.chosenProfile]["Name"] = returned_data["name"]
+            image_path = returned_data["photoURL"]
+
+            if image_path:
+                if os.path.exists(image_path):
+                    fileName = os.path.basename(image_path)
+                    save_path = os.path.join(srcSourceDir, "ui/profile_icons", fileName)
+                    
+                    try:
+                        if image_path != save_path:
+                            shutil.copy(image_path, save_path)
+                    except shutil.SameFileError: #Avoid errors in file duplication/overwrite
+                        pass
+
+                    self.profileData[self.chosenProfile]["photoURL"] = f"ui/profile_icons/{fileName}"
+                else:
+                    QMessageBox.warning(self, "Invalid Input", "No image path could be found! Remaining with current image.")
+            
+            for key, profile in list(self.profileData.items()):
+                if profile.get("Name") == "Add New Profile":
+                    print(self.profileData[key])
+                    del self.profileData[key]
+
+            with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
+                    json.dump(self.profileData, f, indent=4)
+            
+            self.refresh_ui()
+
+    def delete_profile(self):
+        if self.WindowConfirmation("Confirm Deletion", f"Are you sure you'd like to delete the profile: '{self.profileData[self.chosenProfile]['Name']}' permanently?"):
+            
+            if self.chosenProfile in self.profileData:
+                del self.profileData[self.chosenProfile]
+
+            reindexed_profiles = {}
+            new_index = 0
+            
+            for key, profile_content in self.profileData.items():
+                # Skip the temporary "Add New Profile" if it's currently saved in data
+                if profile_content.get("Name") == "Add New Profile":
+                    continue
+                    
+                # Assign the clean, sequential ID to the profile data structure
+                new_key = f"id{new_index}"
+                reindexed_profiles[new_key] = profile_content
+                new_index += 1
+                
+            self.profileData = reindexed_profiles
+
+            with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
+                json.dump(self.profileData, f, indent=4)
+                
+            self.refresh_ui()
+
+
+    def create_new_profile(self, profile_key):
+        dialog = NewProfileDialog(self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            profile_data = dialog.getData()
+
+            if profile_data and profile_data["name"]:
+
+                self.profileData[profile_key]["Name"] = profile_data["name"]
+
+                image_path = profile_data["photoURL"]
+
+                # fallback if none selected
+                if not image_path:
+                    image_path = f"{srcSourceDir}/ui/profile_icons/add_profile.png"
+
+                # copy image into app folder
+                if os.path.exists(image_path):
+                    fileName = os.path.basename(image_path)
+                    save_path = os.path.join(srcSourceDir, "ui/profile_icons", fileName)
+
+                    try:
+                        if image_path != save_path:
+                            shutil.copy(image_path, save_path)
+                    except shutil.SameFileError: #Avoid errors in file duplication/overwrite
+                        pass
+
+                    self.profileData[profile_key]["photoURL"] = f"ui/profile_icons/{fileName}"
+                else:
+                    self.profileData[profile_key]["photoURL"] = "ui/profile_icons/add_profile.png"
+                
+                self.profileData[profile_key]["saved_tabs"] = {}
+                self.profileData[profile_key]["saved_bookmarks"] = {}
+
+                with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
+                    json.dump(self.profileData, f, indent=4)
+
+            else:
+                QMessageBox.warning(self, "Invalid Input", "Please enter a valid name.")
+        
+        self.refresh_ui()
+
+    def populate_profile_buttons(self):
         self.buttonBox.addStretch()
 
         #first button - create new icon button
@@ -712,52 +1045,16 @@ class profileSelectUI(QDialog):
             profile_photo = f'{srcSourceDir}/{self.profileData[profile_key]["photoURL"]}'
 
             btn = QPushButton()
-            btn.setFixedSize(250,80)
+            btn.setFixedSize(250,270)
 
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgb(60, 60, 75);
-                    color: white;
-                    border: 2px solid rgb(63,129,255);
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: bold;
-                }
-
-                QPushButton:hover {
-                    background-color: rgb(70,70,85);
-                    border: 2px solid rgb(96,151,253);
-                }
-
-                QPushButton:pressed {
-                    background-color: rgb(50,50,65);
-                }
-
-                QPushButton QLabel {
-                    background: transparent;
-                    border: none;
-                    color: white;
-                }
-            """)
+            btn.setStyleSheet(self.NormalStyle)
 
             btn.setToolTip(profile_name)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            layout = QHBoxLayout(btn)
-            layout.setContentsMargins(8,0,8,0)
+            layout = QVBoxLayout(btn)
+            layout.setContentsMargins(8,8,8,8)
             layout.setSpacing(0)
-
-            leftSpacer = QSpacerItem(
-                40,20,
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Minimum
-            )
-
-            rightSpacer = QSpacerItem(
-                40,20,
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Minimum
-            )
 
             text = QLabel(profile_name)
             text.setStyleSheet("""
@@ -770,65 +1067,60 @@ class profileSelectUI(QDialog):
             icon = QLabel()
             if os.path.exists(profile_photo) and profile_photo != f"{srcSourceDir}/ui/images/":
                 pixmap = QPixmap(profile_photo)
-                icon.setPixmap(pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                icon.setPixmap(pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            
+            icon.setContentsMargins(15, 15, 15, 15)
 
-            layout.addItem(leftSpacer)
-            layout.addWidget(text)
-            layout.addItem(rightSpacer)
+            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
             layout.addWidget(icon)
+            layout.addWidget(text)
             
             if profile_name == "Add New Profile":
-                btn.clicked.connect(lambda checked=False, profile=profile_key: self.create_new_profile(profile))
+                btn.clicked.connect(lambda checked=False, profile=profile_key: (self.create_new_profile(profile), self.summonSelector(None)))
             else:
-                btn.clicked.connect(lambda checked=False, profile=profile_key: self.select_profile(profile))
+                btn.clicked.connect(lambda checked=False, profile=profile_key: self.summonSelector(profile))
             self.buttonBox.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+            self.profile_buttons[profile_key] = btn
 
         self.buttonBox.addStretch()
 
-        scroll_area.setWidget(container)
-        main_layout.addWidget(scroll_area, 1)
+    def refresh_ui(self):
+        #Clear profile buttons
+        while self.buttonBox.count() > 0:
+            item = self.buttonBox.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()  # Safely delete old QPushButton
 
-    def select_profile(self, profile_key):
-        """Handle profile selection"""
-        self.selected_profile = profile_key
-        self.accept()
+        #Re-read the updated data from JSON file
+        with open(f"{srcSourceDir}/data/profileData.json", "r") as f:
+            self.profileData = dict(json.load(f))
+        
+        self.summonSelector(None)
 
-    def create_new_profile(self, profile_key):
-        dialog = NewProfileDialog(self)
+        # Re-run the UI loops
+        self.populate_profile_buttons()
+    
+    def updateSelectedButton(self):
 
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            profile_data = dialog.getData()
+        for key, btn in self.profile_buttons.items():
 
-            if profile_data and profile_data["name"]:
-
-                self.profileData[profile_key]["Name"] = profile_data["name"]
-
-                image_path = profile_data["photoURL"]
-
-                # fallback if none selected
-                if not image_path:
-                    image_path = f"{srcSourceDir}/ui/profile_icons/add_profile.png"
-
-                # optional: copy image into your app folder (recommended)
-                if os.path.exists(image_path):
-                    fileName = os.path.basename(image_path)
-                    save_path = os.path.join(srcSourceDir, "ui/profile_icons", fileName)
-
-                    if image_path != save_path:
-                        shutil.copy(image_path, save_path)
-
-                    self.profileData[profile_key]["photoURL"] = f"ui/profile_icons/{fileName}"
-                else:
-                    self.profileData[profile_key]["photoURL"] = "ui/profile_icons/add_profile.png"
-
-                with open(f"{srcSourceDir}/data/profileData.json", "w") as f:
-                    json.dump(self.profileData, f, indent=4)
-
-                self.selected_profile = profile_key
-                self.accept()
-
+            if key == self.chosenProfile:
+                btn.setStyleSheet(self.SelectedStyle)
             else:
-                QMessageBox.warning(self, "Invalid Input", "Please enter a valid name.")
+                btn.setStyleSheet(self.NormalStyle)
+
+    
+    def WindowConfirmation(self, title, message):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg_box.exec()
+        return msg_box.clickedButton() == msg_box.button(QMessageBox.StandardButton.Yes)
 
     def getSelectedConfig(self):
         if hasattr(self, 'selected_profile'):
@@ -959,7 +1251,7 @@ class Browser(QMainWindow):
 
         self.nav_bar = self.barManager.setup_navbar()
 
-        self.bookmarks_bar = self.barManager.setup_bookmarksbar(self.profile_config["saved_bookmarks"])
+        self.bookmarks_bar = self.barManager.setup_bookmarksbar(self.profile_config["saved_bookmarks"] if not None else {})
 
         self.status_bar = self.barManager.setup_statusbar(profile_icon=f"{srcSourceDir}/{profile_config['photoURL']}", name=profile_config["Name"])
 
@@ -1111,10 +1403,23 @@ class Browser(QMainWindow):
         self.pan_offset_x = 0
         self.pan_offset_y = 0
 
+        #close Event helper
+        self.bypassCloseEvent = False
 
 
 
-        #Run all browser startup triggers such as loading tabs from previous sessions, deploying js code, etc.
+        # Register background processes
+
+        # Dns fallback monitor
+        if profileData["DNS-over-HTTPS"] != "Default":
+            self.monitor = SecureDnsMonitor(profileData["Dns-Fallback"], doh_providers[profileData["DNS-over-HTTPS"]]["url"])
+
+        # Instantiate error overlay
+        self.overlay = EmergencyOverlay(parent=self)
+        self.overlay.hide()
+        self.overlay.reboot_requested.connect(lambda: self.fullRestart(triggerCloseEvent = False, profile_config=self.profile_config.copy()))
+
+        #Run all browser startup triggers such as loading tabs from previous sessions.
         self.onStartup()
 
 
@@ -1124,7 +1429,7 @@ class Browser(QMainWindow):
 
 
 
-    '''Startup and Shutdown functions'''
+    ''' Internal Browser Management '''
 
     def onStartup(self):
         #Load all tabs from most recent shutdown if possible
@@ -1168,9 +1473,13 @@ class Browser(QMainWindow):
         #extra assurance shutdown command to avoid hanging on shutdown in case of httpcache clear failure
         QTimer.singleShot(3000, self.finish_shutdown)
 
-    def fullRestart(self, profile_config):
+    def fullRestart(self, triggerCloseEvent=True, profile_config=None):
         self.is_restarting = True
         self.pending_restart = True
+        if triggerCloseEvent != True:
+            self.bypassCloseEvent = True
+        else:
+            self.bypassCloseEvent = False
         print("FULL RESTART CALLED")
         with open(f"{srcSourceDir}/data/currentProfile.json","w") as f:
             json.dump(profile_config, f, indent=4)
@@ -1178,10 +1487,71 @@ class Browser(QMainWindow):
         self.shutdown_Systems()
 
     def finish_shutdown(self):
-        if getattr(self,"pending_restart", False):
-            print("STARTDETACHED FIRING")
+        if getattr(self, "_shutdown_finished", False):
+            return
+
+        self._shutdown_finished = True
+
+        if getattr(self, "pending_restart", False):
             QProcess.startDetached(sys.executable, sys.argv)
+
         QApplication.quit()
+
+    #profile menu reloader system
+    def open_profile_menu(self):
+        if self.WindowConfirmation("Restart Required", "Browser will restart to allow profile changes. Continue?"):
+            
+            # Save current open tabs before restart
+            if saveTabsOnRestart:
+                savetabs = {}
+                for tab in range(self.tabs.count()):
+                    if "midnightwatch://" not in self.tabs.widget(tab).url().toString():
+                        savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
+                
+                self.profile_config["saved_tabs"] = savetabs
+            
+            # Close current browser window
+            launcher = profileSelectUI()
+
+            if launcher.exec() == QDialog.Accepted:
+
+                profile = launcher.getSelectedConfig()
+
+                self.fullRestart(profile)
+
+    def executeEmergency(self, danger):
+        if danger == "accelVidDecodeErr":
+            #trigger UI display
+            self.current_browser.hide()
+            title="Critical Rendering Error Detected"
+            text="""Midnight Watch has detected unstable GPU rendering on your device
+        Expected error: Accelerated Video Decoding error
+
+        To ensure continual functionality, accelerated video decoding has been disabled
+        (GPU Safe System should be enabled in settings)
+        Please reboot the browser to resume operation"""
+            self.overlay.set_content(title, text)
+            self.overlay.setGeometry(0, 0, self.width(), self.height())
+            self.overlay.show()
+            self.overlay.raise_()
+            self.current_browser.page().setAudioMuted(True)
+
+            #set all profiles to GPU Safe System
+            with open(f"{srcSourceDir}/data/profileData.json","r") as f:
+                fullList = dict(json.load(f))
+
+            for id, profileData in fullList.items():
+                profileData["stored_data"]["GPU-Safe-System"] = True
+                fullList[id] = profileData
+            
+            with open(f"{srcSourceDir}/data/profileData.json","w") as f:
+                json.dump(fullList, f, indent=4)
+
+            #Update current profile to allow the reboot to not use stale data
+            self.profile_config["stored_data"]["GPU-Safe-System"] = True
+
+
+
 
 
 
@@ -1189,12 +1559,13 @@ class Browser(QMainWindow):
     '''Main Events Handling'''
 
     def closeEvent(self, event):
-        if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
-            self.shutdown_Systems()
-            event.accept()
-        else:
-            event.ignore()
-            print("Exit cancelled by user")
+        if not self.bypassCloseEvent:
+            if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
+                self.shutdown_Systems()
+                event.accept()
+            else:
+                event.ignore()
+                print("Exit cancelled by user")
     
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1220,9 +1591,9 @@ class Browser(QMainWindow):
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             # Ctrl + Scroll = Zoom
             if event.angleDelta().y() > 0:
-                self.setContentZoom(True)
+                self.apply_zoom(self.zoomValue + 10)
             else:
-                self.setContentZoom(False)
+                self.apply_zoom(self.zoomValue - 10)
             event.accept()
         else:
             super().wheelEvent(event)
@@ -1322,6 +1693,7 @@ class Browser(QMainWindow):
             self.barManager.zoom_slider.blockSignals(True)
             self.barManager.zoom_slider.setValue(self.zoomValue)
             self.barManager.zoom_slider.blockSignals(False)
+            self.barManager.zoomDisplay.setText(f"{self.zoomValue}%")
 
 
 
@@ -1976,11 +2348,6 @@ class Browser(QMainWindow):
 
         
 
-    #system for when I implement the main colourtheme editor
-    def ColourThemeEditor(self):
-        print("ColourThemeEditor still WIP")
-        pass
-
     
 
 
@@ -2020,29 +2387,6 @@ class Browser(QMainWindow):
         self.cookieGUI() 
 
 
-    #profile menu reloader system
-    def open_profile_menu(self):
-        if self.WindowConfirmation("Restart Required", "Browser will restart to allow profile changes. Continue?"):
-            
-            # Save current open tabs before restart
-            if saveTabsOnRestart:
-                savetabs = {}
-                for tab in range(self.tabs.count()):
-                    if "midnightwatch://" not in self.tabs.widget(tab).url().toString():
-                        savetabs[self.tabs.widget(tab).url().toString()] = str(self.tabs.tabText(tab))
-                
-                self.profile_config["saved_tabs"] = savetabs
-            
-            # Close current browser window
-            launcher = profileSelectUI()
-
-            if launcher.exec() == QDialog.Accepted:
-
-                profile = launcher.getSelectedConfig()
-
-                self.fullRestart(profile)
-            
-
     
 if __name__ == "__main__":
     # Register scheme FIRST - before QApplication or any dialogs
@@ -2055,6 +2399,7 @@ if __name__ == "__main__":
         QWebEngineUrlScheme.Flag.FetchApiAllowed
     )
     QWebEngineUrlScheme.registerScheme(scheme)
+    qInstallMessageHandler(qt_message_router)
     
     # NOW create the application
     app = QApplication(sys.argv)
@@ -2064,7 +2409,7 @@ if __name__ == "__main__":
     handoff_path = f"{srcSourceDir}/data/currentProfile.json"
 
     if os.path.exists(handoff_path):
-
+    
         with open(handoff_path) as f:
             selectedProfile = json.load(f)
         
@@ -2077,16 +2422,17 @@ if __name__ == "__main__":
             sys.exit(0)
 
         selectedProfile = launcher.getSelectedConfig()
-
+    
     startupSettings = selectedProfile["stored_data"]
 
     settingsActivate(startupSettings)
 
     if "DNS-over-HTTPS" in startupSettings:
-        updateDoHSettings(startupSettings["DNS-over-HTTPS"])
+        updateDoHSettings(startupSettings["DNS-over-HTTPS"], startupSettings)
 
-    # NOW create the browser
+    # Create the browser
     window = Browser(profile_config=selectedProfile)
+    GPUErrorMonitor.emergency_fired.connect(window.executeEmergency)
     window.show()
 
     sys.exit(app.exec())

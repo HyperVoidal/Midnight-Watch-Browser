@@ -3,7 +3,7 @@ from pathlib import Path
 import requests
 from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor, QPalette, QFontMetrics, QDrag
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve, QDateTime, QMimeData
+from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve, QDateTime, QMimeData, Signal
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QTabBar, QStylePainter, QStyleOptionTab, QStyle
 from PySide6.QtCore import QSize
@@ -29,10 +29,10 @@ def get_normIcon(name):
     return QIcon(str(icon_path))
 
 class NewProfileDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, title="Create New Profile", placeholder="Enter profile name...", image=None, image_text="Profile Image:"):
         super().__init__(parent)
 
-        self.setWindowTitle("Create New Profile")
+        self.setWindowTitle(title)
         self.resize(400, 220)
 
         self.image_path = ""
@@ -43,11 +43,11 @@ class NewProfileDialog(QDialog):
         layout.addWidget(QLabel("Profile Name:"))
 
         self.nameInput = QLineEdit()
-        self.nameInput.setPlaceholderText("Enter profile name...")
+        self.nameInput.setPlaceholderText(placeholder)
         layout.addWidget(self.nameInput)
 
         # ----- Image Selection -----
-        layout.addWidget(QLabel("Profile Image:"))
+        layout.addWidget(QLabel(image_text))
 
         imgLayout = QHBoxLayout()
 
@@ -58,6 +58,17 @@ class NewProfileDialog(QDialog):
             background: transparent;
         """)
         self.imagePreview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if image:
+            self.image_path = image
+
+            pixmap = QPixmap(image)
+            pixmap = pixmap.scaled(
+                64,64,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+
+            self.imagePreview.setPixmap(pixmap)
 
         self.browseButton = QPushButton("Browse...")
         self.browseButton.clicked.connect(self.selectImage)
@@ -104,6 +115,88 @@ class NewProfileDialog(QDialog):
             "name": self.nameInput.text().strip(),
             "photoURL": self.image_path
         }
+    
+
+class EmergencyOverlay(QWidget):
+    # Signal emitted when the action button is clicked
+    reboot_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #0d0d0d;
+                color: #f0f0f0;
+            }
+            QLabel#OverlayTitle {
+                font-size: 24px;
+                font-weight: bold;
+                color: #ff4d4d;
+                margin-bottom: 10px;
+                background: transparent;
+            }
+            QLabel#OverlayText {
+                font-size: 14px;
+                color: #cccccc;
+                background: transparent;
+            }
+            QPushButton#RebootButton {
+                background-color: #ff4d4d;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton#RebootButton:hover {
+                background-color: #e63939;
+            }
+            QPushButton#RebootButton:pressed {
+                background-color: #cc2929;
+            }
+        """)
+
+        # Set up the layout
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(20)
+
+        # Create UI elements with specific object names for the CSS
+        self.title_label = QLabel()
+        self.title_label.setObjectName("OverlayTitle")
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        #self.title_label.setWordWrap(True)
+
+        self.text_label = QLabel()
+        self.text_label.setObjectName("OverlayText")
+        self.text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        #self.text_label.setWordWrap(True)
+
+        self.reboot_btn = QPushButton("Reboot Browser")
+        self.reboot_btn.setObjectName("RebootButton")
+        self.reboot_btn.setFixedSize(220, 45)
+        self.reboot_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+
+        # Connect the button click to out-of-file backend emitters
+        self.reboot_btn.clicked.connect(self.reboot_requested.emit)
+
+        self.title_label.setAlignment(Qt.AlignHCenter)
+        self.text_label.setAlignment(Qt.AlignHCenter)
+        self.text_label.adjustSize()
+
+
+        # Assemble UI tree
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.text_label)
+        layout.addWidget(self.reboot_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def set_content(self, title, text):
+        """Updates the labels dynamically when an error matches."""
+        self.title_label.setText(title)
+        self.text_label.setText(text)
 
 class BarManager:
 
@@ -493,21 +586,6 @@ class BarManager:
             Cwidget_action.setData(key)
             Cwidget_action.triggered.connect(lambda checked, p=key, d=Colourdata: self.parent.SelectColourTheme(p, d))
             self.ColourMenu.addAction(Cwidget_action)
-
-        #add more themes button append
-        Awidget = QWidget()
-        Alayout = QHBoxLayout(Awidget)
-        Alayout.setContentsMargins(5, 2, 5, 2)
-        Alayout.setSpacing(5)
-
-        Atext_label = QLabel("Add New Themes")
-        Alayout.addWidget(Atext_label)
-
-        Awidget_action = QWidgetAction(self.parent)
-        Awidget_action.setDefaultWidget(Awidget)
-        Awidget_action.setData("Add New Themes")
-        Awidget_action.triggered.connect(self.parent.ColourThemeEditor)
-        self.ColourMenu.addAction(Awidget_action)
 
         
         self.colourpalette_btn.setMenu(self.ColourMenu)
