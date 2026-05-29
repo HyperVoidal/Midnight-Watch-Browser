@@ -36,7 +36,8 @@
             "Utilise-QUIC-Browsing": true,
             "DeGoogler": false,
             "Dns-Fallback": true,
-            "GPU-Safe-System": true
+            "GPU-Safe-System": true,
+            "Anti-Fingerprinting": true
         }
     },
     "id1": {
@@ -76,7 +77,8 @@
             "Utilise-QUIC-Browsing": false,
             "DeGoogler": false,
             "Dns-Fallback": false,
-            "GPU-Safe-System": true
+            "GPU-Safe-System": true,
+            "Anti-Fingerprinting": false
         }
     },
     "id2": {
@@ -85,7 +87,7 @@
         "saved_tabs": {},
         "saved_bookmarks": {},
         "stored_data": {
-            "DNS-over-HTTPS": "Default",
+            "DNS-over-HTTPS": "AdGuard",
             "Cookie-Prediction-Sensitivity": 4,
             "Cookie-Accept/Deny-On-Leave": false,
             "Save-Tabs-On-Restart": false,
@@ -110,9 +112,10 @@
             "Image-Url": "MainImageBackground.png",
             "Colour-Theme": "Secured Blue",
             "Utilise-QUIC-Browsing": false,
-            "DeGoogler": false,
+            "DeGoogler": true,
             "Dns-Fallback": false,
-            "GPU-Safe-System": true
+            "GPU-Safe-System": true,
+            "Anti-Fingerprinting": true
         }
     }
 }

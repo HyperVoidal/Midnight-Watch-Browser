@@ -1,37 +1,194 @@
-from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEngineScript, QWebEngineUrlRequestJob
+from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEngineScript, QWebEngineUrlRequestJob, QWebEnginePage
 from PySide6.QtCore import QUrl, QUrlQuery, QUrlQuery, QBuffer, QIODevice, QByteArray, QFile
-from engine_bridge import is_url_safe, get_cosmetic_filters, get_scriptlets
-from PySide6.QtWebEngineCore import QWebEngineUrlScheme, QWebEngineUrlSchemeHandler
+from PySide6.QtWebEngineCore import QWebEngineUrlScheme, QWebEngineUrlSchemeHandler, QWebEngineUrlRequestJob
 from pathlib import Path
 import os
 import json
+from engine_bridge import is_url_safe, get_cosmetic_filters, get_scriptlets
+from ui_core import additionalUIElements
+
+
+
 srcSourceDir = Path(__file__).parent
 
+BASE_DIR = (Path(srcSourceDir)/"ui").resolve()
 
-#This will have to stay it's own class to avoid conflicts with UrlManager systems
+
+#individual class management to isolate normal content pages from internal pages
+class BrowserPage(QWebEnginePage):
+
+    def __init__(self, profile, browser, parent=None):
+        super().__init__(profile, parent)
+        self.additionalUIElements = additionalUIElements(self)
+        self.browser = browser
+        self.featurePermissionRequested.connect(self.handle_permission)
+
+    def handle_permission(self, origin, feature):
+        names = {
+
+            QWebEnginePage.Feature.Geolocation:
+                "Location",
+
+            QWebEnginePage.Feature.Notifications:
+                "Notifications",
+
+            QWebEnginePage.Feature.MediaAudioCapture:
+                "Microphone",
+
+            QWebEnginePage.Feature.MediaVideoCapture:
+                "Camera",
+
+            QWebEnginePage.Feature.MediaAudioVideoCapture:
+                "Camera + Microphone"
+        }
+
+        label = names.get(feature, str(feature))
+
+        allow = self.additionalUIElements.WindowConfirmation(label, f"{origin.toString()} requests {label}.")
+        
+        if allow:
+            policy = QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
+        else:
+            policy = QWebEnginePage.PermissionPolicy.PermissionDeniedByUser
+
+        self.setFeaturePermission(origin, feature,policy)
+
+    def acceptNavigationRequest(self, url, nav_type, is_mainframe):
+
+        # Don't inspect subresource loads
+        if not is_mainframe:
+            return True
+
+        # Suspicious schemes
+        dangerous = {
+            "file",
+            "javascript",
+            "data"
+        }
+
+        scheme = url.scheme().lower()
+
+        if scheme in dangerous:
+            return self.additionalUIElements.WindowConfirmation("Dangerous Navigation", f"Allow navigation to:\n{url.toString()} ?")
+        
+        # Allow normal user clicks
+        if nav_type == (QWebEnginePage.NavigationType.NavigationTypeLinkClicked):
+            return True
+
+        return True
+
+    def createWindow(self, window_type):
+        if not self.additionalUIElements.WindowConfirmation("Popup Request", "Allow popup window?"):
+            return None
+
+        browser = self.parent()
+
+        if hasattr(browser,"add_new_tab"):
+            new_tab = self.browser.add_new_tab(QUrl("about:blank"), "Popup")
+            return new_tab.page()
+        return None
+
+class InternalPage(QWebEnginePage):
+
+    def __init__(self, profile, browser, parent=None):
+        super().__init__(profile, parent)
+        self.additionalUIElements = additionalUIElements(self)
+        self.browser = browser
+
+    def acceptNavigationRequest(self, url, nav_type, is_mainframe):
+
+        if not is_mainframe:
+            return True
+
+        scheme = url.scheme().lower()
+
+        # internal resources always OK
+        if scheme == "midnightwatch":
+            return True
+        
+        # User-initiated actions are always allowed
+        allowed = {
+            QWebEnginePage.NavigationType.NavigationTypeTyped,
+            QWebEnginePage.NavigationType.NavigationTypeOther,
+            QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+            QWebEnginePage.NavigationType.NavigationTypeBackForward,
+            QWebEnginePage.NavigationType.NavigationTypeReload
+        }
+        
+        if nav_type in allowed:
+            return True
+
+        # Handle Redirects
+        if nav_type == QWebEnginePage.NavigationType.NavigationTypeRedirect:
+            if url.scheme() == "midnightwatch":
+                return True
+
+            # allow same-origin redirects
+            if url.host() == self.url().host():
+                return True
+
+            # prompt for cross-origin redirects
+            return self.additionalUIElements.WindowConfirmation("Redirect", f"Allow redirect to:\n{url.toString()}?")
+
+        print(f"Blocked internal navigation ({nav_type}) -> {url.toString()}")
+        return False
+
+
+
+
 class UrlCustomSchemeManager(QWebEngineUrlSchemeHandler):
+    #MIME Whitelist
+    MIME_MAP = {
+        ".html":"text/html",
+        ".css":"text/css",
+        ".js":"application/javascript",
+        ".png":"image/png",
+        ".jpg":"image/jpeg",
+        ".jpeg":"image/jpeg",
+        ".svg":"image/svg+xml",
+        ".json":"application/json",
+        ".woff2":"font/woff2"
+    }
+
     def requestStarted(self, job):
         url = job.requestUrl()
-        path = url.path().lstrip('/') 
-        file_path = os.path.join(srcSourceDir, "ui", path)
+        relative = url.path().lstrip('/')
+        target = (BASE_DIR/relative).resolve()
 
-        if os.path.exists(file_path):
-            #Open the file directly as a QIODevice
-            file = QFile(file_path)
-            
-            #Set the 'job' as the parent so C++ deletes the file object 
-            # automatically when the request is done. No Python dicts needed!
-            file.setParent(job) 
-            
-            if file.open(QIODevice.OpenModeFlag.ReadOnly):
-                mime = "text/html" if path.endswith(".html") else "image/png"
-                if path.endswith(".css"): mime = "text/css"
-                
-                #Pass the file object directly to reply
-                job.reply(mime.encode(), file)
-                return
+        #Traversal protection
+        try:
+            target.relative_to(BASE_DIR)
+        except ValueError:
+            print(f"Midnight Shield: traversal blocked -> {target}")
+            job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
+            return
+        
+        #Check that it actually works
+        if not target.exists():
+            job.fail(QWebEngineUrlRequestJob.Error.UrlNotFound)
+            return
+        
+        #Avoid giving any job an agreement if the request comes from a non-local source file
+        if url.host().lower() != "local":
+            job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
+            return
 
-        job.fail(QWebEngineUrlRequestJob.Error.UrlNotFound)
+        #Deny unknown extensoins
+        mime = self.MIME_MAP.get(target.suffix.lower())
+        if not mime:
+            print(f"Midnight Shield: unsupported mime -> {target}")
+            job.fail(QWebEngineUrlRequestJob.Error.UrlInvalid)
+            return
+
+        #Filesystem root sandbox
+        file = QFile(str(target))
+        file.setParent(job)
+
+        if not file.open(QIODevice.OpenModeFlag.ReadOnly):
+            job.fail(QWebEngineUrlRequestJob.Error.RequestFailed)
+            return
+
+        job.reply(mime.encode(), file)
 
 
 
@@ -161,7 +318,7 @@ class ScriptletBlocker:
 
 class EVAdInterceptor():
     @staticmethod
-    def deployPayload(browser, profile): #function for blocking ads in embedded in videos   
+    def deployPayload(browser, profile, injectionData): #function for blocking ads in embedded in videos   
         try:
             with open(f"{srcSourceDir}/Javascript_Executables/embeddedadblocker.js", 'r', encoding='utf-8') as f:
                 js_code = f.read()
@@ -172,8 +329,7 @@ class EVAdInterceptor():
         script = QWebEngineScript()
         script.setSourceCode(js_code)
         script.setName("EVAdIntercept_Payload")
-
-        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         script.setRunsOnSubFrames(True)
 
@@ -182,17 +338,31 @@ class EVAdInterceptor():
             with open(f"{srcSourceDir}/Javascript_Executables/youtubeBlocker.js", 'r', encoding='utf-8') as f:
                 ytb_txt = f.read()
         except IOError as e:
-            print(f"Error reading embeddedadblocker javascript file")
+            print(f"Error reading youtube adblocker javascript file")
             ytb_txt = ""
         ytbScript = QWebEngineScript()
         ytbScript.setSourceCode(ytb_txt)
         ytbScript.setName("Youtube_Script_Blocker")
         ytbScript.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        ytbScript.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        ytbScript.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
         ytbScript.setRunsOnSubFrames(True)
+
+
+        try:
+            with open(f"{srcSourceDir}/Javascript_Executables/antiFingerprinting.js", 'r', encoding='utf-8') as f:
+                af_txt = f.read()
+        except IOError as e:
+            print(f"Error reading anti-fingerprinting javascript file")
+        afScript = QWebEngineScript()
+        afScript.setSourceCode(af_txt)
+        afScript.setName("anti-fingerprinting")
+        afScript.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        afScript.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+        afScript.setRunsOnSubFrames(True)
 
         #Add to the page's script collection
         #browser.page().scripts().clear()
         #profile.scripts?
         profile.scripts().insert(script)
         profile.scripts().insert(ytbScript)
+        profile.scripts().insert(afScript)

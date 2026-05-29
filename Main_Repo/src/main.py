@@ -25,6 +25,7 @@ import hashlib
 import shutil
 import plyer
 from plyer import notification
+import random
 from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
@@ -38,6 +39,17 @@ icon_cache_dir.mkdir(exist_ok=True)
 
 #Main src source
 srcSourceDir = Path(__file__).parent
+
+
+#Internal urlscheme registry
+def registerScheme():
+    scheme = QWebEngineUrlScheme(b"midnightwatch")
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
+    scheme.setFlags(
+        QWebEngineUrlScheme.Flag.SecureScheme |
+        QWebEngineUrlScheme.Flag.FetchApiAllowed
+    )
+    QWebEngineUrlScheme.registerScheme(scheme)
 
 #Icon attachment filepath system
 def get_normIcon(name):
@@ -57,6 +69,30 @@ for key, value in engineData.items():
     if value["active"] == True:
         engine = key
 
+#Multiple hardware profiles for different rendering systems
+HARDWARE_PROFILES = [
+    {
+        "cores": 4, 
+        "ram": 8, 
+        "vendor": "Intel Inc.", 
+        "renderer": "Intel(R) UHD Graphics 630",
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    },
+    {
+        "cores": 8, 
+        "ram": 16, 
+        "vendor": "Google Inc. (NVIDIA)", 
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    },
+    {
+        "cores": 8, 
+        "ram": 8, 
+        "vendor": "Apple", 
+        "renderer": "Apple M1",
+        "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+]
 #print("ENGINES LIST FROM JSON: ", engines)
 print("Startup Selected Engine: ", engine)
 
@@ -318,11 +354,19 @@ class objectMasterBridge(QObject):
     dataReturned = Signal(str, str)
 
 
-    def __init__(self, browser):
+    def __init__(self, browser, page=None):
         super().__init__()
         with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
             self.colourData = dict(json.load(f))
         self.browser = browser
+        self.page=page
+
+    def trusted_origin(self):
+        if not self.page:
+            return False
+        url=self.page.url()
+        print(url.toString())
+        return (url.scheme().lower()=="midnightwatch" and url.host().lower()=="local")
 
     @Slot(str)
     def receiveSearchQuery(self, query):
@@ -333,6 +377,10 @@ class objectMasterBridge(QObject):
 
     @Slot(list)
     def receiveData(self, data):
+        if not self.trusted_origin():
+            print("MIDNIGHT SHIELD: Blocked bridge call from untrusted source.")
+            return
+        
         if data:
             #data is returned as a list giving [0, 1] for [header, value] for insertion into json files
             dataHeader = data[0]
@@ -424,6 +472,9 @@ class objectMasterBridge(QObject):
 
             if dataHeader == "GPUSafeSystem":
                 settingsData["GPU-Safe-System"] = (str(dataValue).lower() == "true")
+
+            if dataHeader == "AntiFingerprint":
+                settingsData["Anti-Fingerprinting"] = (str(dataValue).lower() == "true")
             
             if dataHeader == "imageUpload":
                 fileInfo = dataValue
@@ -576,8 +627,7 @@ class objectMasterBridge(QObject):
             return str(f"images/{settingsData["Image-Url"]}")
         
         elif key == "settingsLink":
-            abs_path = os.path.abspath(f"{srcSourceDir}/ui/icon_cache/settings.png")
-            return f"file:///{abs_path.replace(os.sep, '/')}" 
+            return "midnightwatch://local/icon_cache/settings.png"
         
         # Settings html bridge section
         
@@ -660,6 +710,9 @@ class objectMasterBridge(QObject):
 
         elif key == "GPUSafeSystem":
             return str(settingsData["GPU-Safe-System"])
+        
+        elif key == "AntiFingerprint":
+            return str(settingsData["Anti-Fingerprinting"])
             
         else:
             return f"Error: Key: {str(key)} not found"
@@ -1065,9 +1118,10 @@ class profileSelectUI(QDialog):
             text.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             icon = QLabel()
-            if os.path.exists(profile_photo) and profile_photo != f"{srcSourceDir}/ui/images/":
+            if os.path.exists(profile_photo):
                 pixmap = QPixmap(profile_photo)
-                icon.setPixmap(pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                if not pixmap.isNull():
+                    icon.setPixmap(pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             
             icon.setContentsMargins(15, 15, 15, 15)
 
@@ -1144,9 +1198,30 @@ class Browser(QMainWindow):
         global eColsButton
         global sensitivity
 
+        self.hardwareProfiles = HARDWARE_PROFILES
+
+        self.fingerprintInjectionProfile = random.choice(self.hardwareProfiles)
+        print(f"Anti-Fingerprint profile: {self.fingerprintInjectionProfile}")
+
         #update main loader json file with the info selected from the profile
         profileData = profile_config["stored_data"]
         self.profile_config = profile_config
+
+        if profile_config["Name"] == "Ephemeral":
+            self.profile = QWebEngineProfile("Ephemeral", self)
+        else:
+            self.profile = QWebEngineProfile("PersistentUser", self)
+
+        #Set up adjusted user-agent if fingerprinting enabled
+        if profileData["Anti-Fingerprinting"] == True:
+            self.profile.setHttpUserAgent(self.fingerprintInjectionProfile["ua"])
+
+        #Assign URL Scheme to page loaders
+        self.handler = UrlCustomSchemeManager()
+        self.profile.installUrlSchemeHandler(b"midnightwatch", self.handler)
+
+        #create browser widgets
+        self.current_browser = QWebEngineView(self)
 
         self.is_restarting = False
         self.pending_restart = False
@@ -1159,17 +1234,8 @@ class Browser(QMainWindow):
 
         settingsActivate(self.settingsData)
 
-        if profile_config["Name"] == "Ephemeral":
-            self.profile = QWebEngineProfile("Ephemeral", self)
-        else:
-            self.profile = QWebEngineProfile("PersistentUser", self)
-        self.current_browser = QWebEngineView(self)
-
         #Url Manager
         self.UrlManager = UrlManager()
-        #Assign URL Scheme to page loaders
-        self.handler = UrlCustomSchemeManager()
-        self.profile.installUrlSchemeHandler(b"MidnightWatch", self.handler)
         
         #load webchannel data from internal system to ui folder
         ensure_webchannel_js(os.path.join(srcSourceDir, "ui"))
@@ -1189,7 +1255,7 @@ class Browser(QMainWindow):
         #Security enable settings
         settings.setAttribute(settings.WebAttribute.XSSAuditingEnabled, True)
 
-        #Would be good to disable for efficiency and maximum security but I need javascript actually working - could be a toggleable system?
+        #Would be good to disable for efficiency and maximum security but I need javascript actually working.
         settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
         
 
@@ -1227,13 +1293,6 @@ class Browser(QMainWindow):
         self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
 
 
-        #instantiate objectMasterBridge
-        self.objectBridge = objectMasterBridge(self)
-        self.objectBridge.searchRequested.connect(self.htmlSearch)
-        self.channel = QWebChannel(self.current_browser.page())
-        self.channel.registerObject("pyBridge", self.objectBridge)
-
-
         #Bar Management System
         self.container = QWidget()
         self.layout = QVBoxLayout(self.container)
@@ -1241,6 +1300,7 @@ class Browser(QMainWindow):
         self.layout.setSpacing(0)
 
         self.barManager = BarManager(self, eColsStyle, eColsButton)
+        self.additionalUIElements = additionalUIElements(self)
 
         self.tabs = self.barManager.setup_tabs()
 
@@ -1248,6 +1308,10 @@ class Browser(QMainWindow):
              self.tabs.tabCloseRequested.connect(lambda i: QTimer.singleShot(0, self.tabs.tabBar().update_hover_from_cursor))
         self.tabs.tabCloseRequested.connect(lambda i: (self.close_tab(i)))
         self.tabs.currentChanged.connect(self.switch_tab)
+
+        #Attach tab bar to right click menu
+        self.tabs.tabBar().setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tabs.tabBar().customContextMenuRequested.connect(self.displayTabsContextMenu)
 
         self.nav_bar = self.barManager.setup_navbar()
 
@@ -1312,11 +1376,15 @@ class Browser(QMainWindow):
         self.cookie_btn, self.cookieMenu = self.barManager.setup_cookie_button()
         self.cookieMenu.aboutToShow.connect(self.cookieGUI)
 
+        #Right Click Context Menu
+        self.RContextMenu = self.barManager.setupContextMenu()
+        self.Bookmark_menu = QMenu()
+
         #final reset to styling to skip default selection
         self.SelectColourTheme(self.selectedprofile, Colourdata)
 
         #Deploy js code when webpage starts
-        EVAdInterceptor.deployPayload(browser=self.current_browser, profile=self.profile)
+        EVAdInterceptor.deployPayload(browser=self.current_browser, profile=self.profile, injectionData=self.fingerprintInjectionProfile)
 
 
         #Actions list using commands
@@ -1386,10 +1454,10 @@ class Browser(QMainWindow):
         zoomOut_action.triggered.connect(lambda ok: self.setContentZoom(False))
 
         #Mute tab command - need to actually build
-        """ tabmute_action = QAction("&Mute &Tab", self)
+        tabmute_action = QAction("&Mute &Tab", self)
         self.addAction(tabmute_action)
         tabmute_action.setShortcut(QKeySequence("Ctrl+M"))
-        tabmute_action.triggered.connect(self.mute_tab) """
+        tabmute_action.triggered.connect(lambda ok: self.mute_tab(self.tabs.currentIndex()))
 
 
 
@@ -1418,6 +1486,26 @@ class Browser(QMainWindow):
         self.overlay = EmergencyOverlay(parent=self)
         self.overlay.hide()
         self.overlay.reboot_requested.connect(lambda: self.fullRestart(triggerCloseEvent = False, profile_config=self.profile_config.copy()))
+
+
+        #New Expandable Repetition Button system for help display
+        self.buttonInternals = {
+            "Back Help": [self.back_btn, "Back", "back", 1],
+            "Forward Help": [self.forward_btn, "Forward", "forward", 1],
+            "Settings Help": [self.settings_btn, "Settings", "settings", 1],
+            "Home Help": [self.home_btn, "Home", "home", 1],
+            "Reload Help": [self.reload_btn, "Reload", "reload", 1],
+            "New Tab Help": [self.newtab_btn, "New Tab", "newtab", 1],
+            "Colour Palettes Help": [self.colourpalette_btn, "Colour Palettes", "colourpalette", 1],
+            "Search Engines Help": [self.engine_btn, "Engines", "tabIcon", 1],
+            "Cookies Help": [self.cookie_btn, "Cookies", "cookie", 1],
+            "Tabs Help": [None, "Tabs", "tabIcon", 0],
+            "Bookmarks Help": [None, "Bookmarks", "BookmarkNotAdded", 0],
+            "UrlBar Help": [None, "Url Bar", "urlbar", 0],
+            "Zooming Help": [None, "Zooming", "magnify", 0],
+            "Profiles Help": [None, "Profiles", "profile", 0],
+            "StatusBar Help": [None, "Status Bar", "statusbar", 0]
+        }
 
         #Run all browser startup triggers such as loading tabs from previous sessions.
         self.onStartup()
@@ -1499,7 +1587,7 @@ class Browser(QMainWindow):
 
     #profile menu reloader system
     def open_profile_menu(self):
-        if self.WindowConfirmation("Restart Required", "Browser will restart to allow profile changes. Continue?"):
+        if self.additionalUIElements.WindowConfirmation("Restart Required", "Browser will restart to allow profile changes. Continue?"):
             
             # Save current open tabs before restart
             if saveTabsOnRestart:
@@ -1517,7 +1605,7 @@ class Browser(QMainWindow):
 
                 profile = launcher.getSelectedConfig()
 
-                self.fullRestart(profile)
+                self.fullRestart(profile_config=profile)
 
     def executeEmergency(self, danger):
         if danger == "accelVidDecodeErr":
@@ -1550,6 +1638,236 @@ class Browser(QMainWindow):
             #Update current profile to allow the reboot to not use stale data
             self.profile_config["stored_data"]["GPU-Safe-System"] = True
 
+    
+    def displayContextMenu(self, pos, clicked_button):
+        # Guard clause for potential errors
+        if not clicked_button:
+            return
+        
+        # Loop backwards through actions to safely remove elements without breaking index positions
+        for action in reversed(self.RContextMenu.actions()):
+            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+                self.RContextMenu.removeAction(action)
+                action.deleteLater() # Clean up the memory instantly
+        
+        #Add in separator strip
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_help_action")
+
+        for action_text, components in self.buttonInternals.items():
+            if components[3] == 1:
+                target_button = components[0]
+                helper_id = components[1]
+                
+                # Check if this configuration matches the right-clicked widget
+                if clicked_button == target_button:
+                    # Create the action dynamically
+                    new_action = QAction(action_text, self)
+
+                    new_action.setObjectName("dynamic_help_action")
+                    
+                    new_action.triggered.connect(lambda checked=False, id_str=helper_id: self.UIHelper(id_str))
+                    
+                    self.RContextMenu.addAction(new_action)
+                    break  # Exit loop early since a match was discovered
+            
+            else:
+                #pass for when the component isn't actually a part of the list. This is for elements to be added to the internal help display
+                pass
+                    
+        
+        #Set background of context menu transparent
+        self.RContextMenu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.RContextMenu.setAttribute(Qt.WA_TranslucentBackground)
+
+
+        self.RContextMenu.exec(clicked_button.mapToGlobal(pos))
+
+    def displayUrlBarContextMenu(self, pos):
+        # Guard clause 
+        if not hasattr(self, 'url_bar') or not self.url_bar:
+            return
+
+        for action in reversed(self.RContextMenu.actions()):
+            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+                self.RContextMenu.removeAction(action)
+                action.deleteLater()
+
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_help_action")
+
+        # Generate the native menu from the URL bar widget
+        native_menu = self.url_bar.createStandardContextMenu()
+
+        # Migrate the native actions
+        if native_menu:
+            for action in native_menu.actions():
+                action.setObjectName("dynamic_url_action")
+                self.RContextMenu.addAction(action)
+            
+            # Clean up the unrendered native menu shell from memory
+            native_menu.deleteLater()
+        
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_url_action")
+
+        # Extra components
+        clear_url_action = QAction("Clear URL Bar", self)
+        clear_url_action.setObjectName("dynamic_url_action")
+        clear_url_action.triggered.connect(lambda: self.url_bar.clear())
+        self.RContextMenu.addAction(clear_url_action)
+
+        urlHelp_action = QAction("Url Bar Help", self)
+        urlHelp_action.setObjectName("dynamic_url_action")
+        urlHelp_action.triggered.connect(lambda: self.UIHelper("Url Bar"))
+        self.RContextMenu.addAction(urlHelp_action)
+
+        self.RContextMenu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        self.RContextMenu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self.RContextMenu.exec(self.url_bar.mapToGlobal(pos))
+    
+
+    def displayStatusBarContextMenu(self, pos, widget, buttonName):
+    
+        for action in reversed(self.RContextMenu.actions()):
+            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+                self.RContextMenu.removeAction(action)
+                action.deleteLater()
+
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_help_action")
+
+        if buttonName == "zoomDisplay":
+            zoomHelp_action = QAction("Zooming Help")
+            zoomHelp_action.setObjectName("dynamic_status_action")
+            zoomHelp_action.triggered.connect(lambda: self.UIHelper("Zooming"))
+            self.RContextMenu.addAction(zoomHelp_action)
+        if buttonName == "profileDisplay":
+            profileHelp_action = QAction("Profile Help")
+            profileHelp_action.setObjectName("dynamic_status_action")
+            profileHelp_action.triggered.connect(lambda: self.UIHelper("Profiles"))
+            self.RContextMenu.addAction(profileHelp_action)
+
+        statusHelp_action = QAction("Status Bar Help", self)
+        statusHelp_action.setObjectName("dynamic_status_action")
+        statusHelp_action.triggered.connect(lambda: self.UIHelper("Status Bar"))
+        self.RContextMenu.addAction(statusHelp_action)
+        
+        self.RContextMenu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.RContextMenu.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.RContextMenu.exec(widget.mapToGlobal(pos))
+
+
+
+    def displayTabsContextMenu(self, pos):
+        # Determine the integer index of the specific tab that was right-clicked
+        tab_index = self.tabs.tabBar().tabAt(pos)
+        if tab_index == -1: 
+            return # User right-clicked the empty blank space next to tabs
+            
+        # Clear out previous dynamic actions safely
+        for action in reversed(self.RContextMenu.actions()):
+            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+                self.RContextMenu.removeAction(action)
+                action.deleteLater()
+
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_help_action")
+                
+        # Add tab-specific actions dynamically
+        close_action = QAction(f"Close Tab", self)
+        close_action.setObjectName("dynamic_tab_action")
+        close_action.triggered.connect(lambda: self.close_tab(tab_index))
+        self.RContextMenu.addAction(close_action)
+
+        if self.tabs.widget(tab_index).page().isAudioMuted() == False:
+            mute_action = QAction(f"Mute Tab", self)
+        else:
+            mute_action = QAction(f"Unmute Tab", self)
+        mute_action.setObjectName("dynamic_tab_action")
+        mute_action.triggered.connect(lambda: self.mute_tab(tab_index))
+        self.RContextMenu.addAction(mute_action)
+
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_help_action")
+
+        tabHelp_action = QAction("Tabs Help", self)
+        tabHelp_action.setObjectName("dynamic_tab_action")
+        tabHelp_action.triggered.connect(lambda: self.UIHelper("Tabs"))
+        self.RContextMenu.addAction(tabHelp_action)
+        
+        # Apply rendering transformations and trigger
+        self.RContextMenu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.RContextMenu.setAttribute(Qt.WA_TranslucentBackground)
+
+
+
+        self.RContextMenu.exec(self.tabs.tabBar().mapToGlobal(pos))
+    
+    def displayBookmarksContextMenu(self, button, bid, bookmarksData, pos):
+        #Clear out old help actions or previous bookmark actions from the main menu first
+        for action in reversed(self.RContextMenu.actions()):
+            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+                self.RContextMenu.removeAction(action)
+                action.deleteLater()
+
+        # Extract the bookmark details
+        data = bookmarksData
+        bookmark = data[bid]
+        name = bookmark["name"]
+        url = bookmark["url"]
+
+        # Add a visual separator line before the bookmark options
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_bookmark_action")
+
+        # Create actions and attach them to the main context menu
+        rename = QAction("Rename", self)
+        rename.setObjectName("dynamic_bookmark_action")
+        # Use lambda to capture variables securely for the triggered events
+        rename.triggered.connect(lambda: self.handle_bookmark_rename(bid, name, data))
+        self.RContextMenu.addAction(rename)
+
+        delete = QAction("Delete", self)
+        delete.setObjectName("dynamic_bookmark_action")
+        delete.triggered.connect(lambda: self.remove_bookmark(bid))
+        self.RContextMenu.addAction(delete)
+
+        open_tab = QAction("Open in New Tab", self)
+        open_tab.setObjectName("dynamic_bookmark_action")
+        open_tab.triggered.connect(lambda: self.add_new_tab(qurl=url, label=name))
+        self.RContextMenu.addAction(open_tab)
+
+        sep = self.RContextMenu.addSeparator()
+        sep.setObjectName("dynamic_help_action")
+
+        bookmarksHelp = QAction("Bookmarks Help", self)
+        bookmarksHelp.setObjectName("dynamic_bookmark_action")
+        bookmarksHelp.triggered.connect(lambda: self.UIHelper("Bookmarks"))
+        self.RContextMenu.addAction(bookmarksHelp)
+
+        # Apply the window transparency flags to the main menu
+        self.RContextMenu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.RContextMenu.setAttribute(Qt.WA_TranslucentBackground)
+
+        # Summon the main context menu at the button's location
+        self.RContextMenu.exec(button.mapToGlobal(pos))
+
+    def handle_bookmark_rename(self, bid, name, data):
+        new_name = self.additionalUIElements.WindowInput(
+            "Rename Bookmark", "Enter new name:", default_text=name
+        )
+        if new_name:
+            data[bid]["name"] = new_name
+            self.refresh_bookmarksbar(data)
+
+
+    def UIHelper(self, buttonClicked):
+        launcher = SystemHelperUI(self, self.buttonInternals, buttonClicked, False)
+        launcher.exec()
+
 
 
 
@@ -1559,8 +1877,8 @@ class Browser(QMainWindow):
     '''Main Events Handling'''
 
     def closeEvent(self, event):
-        if not self.bypassCloseEvent:
-            if self.WindowConfirmation("Exit", "Close Midnight Watch?"):
+        if not self.bypassCloseEvent and not self.pending_restart:
+            if self.additionalUIElements.WindowConfirmation("Exit", "Close Midnight Watch?"):
                 self.shutdown_Systems()
                 event.accept()
             else:
@@ -1586,61 +1904,25 @@ class Browser(QMainWindow):
             self.update_tab_sizes()
             self._tabs_sized = True
 
-    def wheelEvent(self, event):
+    def wheelEvent(self, event: QWheelEvent):
         """Handle mouse wheel zoom (including two-finger trackpad gestures)"""
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            # Ctrl + Scroll = Zoom
-            if event.angleDelta().y() > 0:
-                self.apply_zoom(self.zoomValue + 10)
-            else:
-                self.apply_zoom(self.zoomValue - 10)
-            event.accept()
-        else:
-            super().wheelEvent(event)
+
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            
+            delta = event.pixelDelta()
+            if delta.isNull():
+                delta = event.angleDelta()
+            
+            if not delta.isNull():
+                if delta.y() > 0:
+                    self.apply_zoom(self.zoomValue + 10)
+                else:
+                    self.apply_zoom(self.zoomValue - 10)
                 
-
-
-
-
-
-    '''Window System'''
-
-    def WindowConfirmation(self, title, message, num=2):
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setIcon(QMessageBox.Icon.Question)
-        
-        if num == 1:
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes)
-            yes_button = msg_box.button(QMessageBox.StandardButton.Yes)
-            yes_button.setText("Okay")
-            msg_box.exec()
-            return msg_box.clickedButton() == yes_button
-        elif num == 2:
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            msg_box.exec()
-            return msg_box.clickedButton() == msg_box.button(QMessageBox.StandardButton.Yes)
-        else: 
-            print("Too high a number of buttons passed to window confirmation!")
-            return
-        
-
-    def WindowInput(self, title, message, default_text=""):
-        text, ok = QInputDialog.getText(
-            self,
-            title,
-            message,
-            QLineEdit.EchoMode.Normal,
-            default_text
-        )
-        if ok and text.strip():
-            return text.strip()
-        return None
-
-
-
-
+                event.accept()
+                return
+            
+        super().wheelEvent(event)   
 
 
 
@@ -1699,7 +1981,6 @@ class Browser(QMainWindow):
 
 
     '''Tab Management'''
-
     def add_new_tab(self, qurl=None, label="New Tab"):
         if qurl is None or isinstance(qurl, bool):
             qurl = QUrl("MidnightWatch://local/homepage.html")
@@ -1708,8 +1989,24 @@ class Browser(QMainWindow):
             qurl = qurl[0]
         
         browser = QWebEngineView()
-        new_page = QWebEnginePage(self.profile, browser)
-        new_page.setWebChannel(self.channel)
+
+        internal = False
+        if qurl:
+            internal = (qurl.scheme().lower() == "midnightwatch" and qurl.host().lower() == "local")
+        if internal:
+            new_page = InternalPage(self.profile, browser)
+
+            #instantiate object communication bridge for internal page
+            bridge = objectMasterBridge(self, new_page)
+            bridge.searchRequested.connect(self.htmlSearch)
+            channel = QWebChannel(new_page)
+            channel.registerObject("pyBridge", bridge)
+            new_page.setWebChannel(channel)
+            new_page.bridge = bridge
+            new_page.channel = channel
+        else:
+            new_page = BrowserPage(self.profile, browser)
+
         browser.setPage(new_page)
         browser.setUrl(qurl)
 
@@ -1753,10 +2050,13 @@ class Browser(QMainWindow):
         tab_index = self.tabs.indexOf(browser)
         if tab_index != -1:
             icon = browser.page().icon()
-            if not icon.isNull():  # Only set if icon actually loaded
-                self.tabs.setTabIcon(tab_index, icon)
-            else:
-                self.tabs.setTabIcon(tab_index, get_normIcon("tabIcon.png"))  # Set default icon if none
+            if icon.isNull():
+                icon = get_normIcon("tabIcon.png")
+                
+            if browser.page().isAudioMuted():
+                icon = self.barManager.get_muted_icon(icon)
+
+            self.tabs.setTabIcon(tab_index, icon)
                 
     def close_tab(self, index=None):
 
@@ -1815,6 +2115,12 @@ class Browser(QMainWindow):
             #Vertical tab specific updates
             if self.settingsData["Tab-Position"] in ["East", "West"]:
                 QTimer.singleShot(0, self.tabs.tabBar().update_close_buttons)
+
+    def mute_tab(self, index):
+        target_tab = self.tabs.widget(index)
+        if target_tab:
+            target_tab.page().setAudioMuted(not target_tab.page().isAudioMuted())
+            self.update_tab_icon(target_tab)
             
 
     def update_tab_title(self, browser, title=None):
@@ -2020,7 +2326,7 @@ class Browser(QMainWindow):
 
     #needs to create a menu popup that can accept a name input. Use Qsanitiser system to clean user input to keep everything safe
     def add_bookmark(self, url):
-        name = self.WindowInput(
+        name = self.additionalUIElements.WindowInput(
             "Add Bookmark",
             "Enter bookmark name:",
             self.tabs.tabText(self.tabs.currentIndex())
@@ -2097,6 +2403,7 @@ class Browser(QMainWindow):
         dataedit["Colour-Theme"] = str(profile)
         with open (f"{srcSourceDir}/data/actionToggles.json", "w") as f:
             json.dump(dataedit, f, indent=4)
+        self.profile_config["stored_data"]["Colour-Theme"] = str(profile)
             
 
         #recolour icons
@@ -2128,7 +2435,9 @@ class Browser(QMainWindow):
                             clamp(int(rgb_list[0]) - 120, 0, 255),
                             clamp(int(rgb_list[1]) - 120, 0, 255),
                             clamp(int(rgb_list[2]) - 120, 0, 255)
-                            ) 
+                            )
+                        
+                        
                         self.hexval = '#%02x%02x%02x' % self.rgb_tuple
                         #print(f"Adjusting colourPalette dropdown {self.hexval}, {self.rgb_tuple}, {self.light_rgb_tuple}")
                         # Apply the styles specifically to the dropdown button (colourpalette_btn)
@@ -2224,7 +2533,7 @@ class Browser(QMainWindow):
                     #print(r, g, b)
                     self.tabs.setStyleSheet(f"QTab::pane {{ color: rgb({r}, {g}, {b}); }}")
 
-
+                
                 elif k == 'url_bar':
                     # explicit url_bar entry overrides url bar styling
                     text_qcolor = QColor(0, 0, 0) if avgnew > 150 else QColor(255, 255, 255)
@@ -2268,11 +2577,41 @@ class Browser(QMainWindow):
                 image: url({str(colouredpath)}); /* Correct way to set the icon image */
             }}
         """)
+
+        #Style menu appearance
+        for element in [self.RContextMenu, self.Bookmark_menu]:
+            element.setStyleSheet(f"""
+                QMenu {{
+                    background-color: rgb({', '.join(str(255 - int(c) + (55 if avgnew < 150 else -55)) for c in text_rgb_str.replace('rgb(', '').replace(')', '').split(','))});
+                    border: 4px solid {self.hexval};
+                    border-radius: 8px;
+                    padding: 4px;
+                }}
+                QMenu::item {{
+                    background-color: transparent;
+                    padding: 6px 24px;
+                    color: {self.select_RGB_SL}
+                    border-radius: 4px;
+                }}
+                /* Hover state display */
+                QMenu::item:selected {{
+                    background-color: rgb({rgb_vals[0] + (30 if avgnew < 150 else -30)}, {rgb_vals[1] + (30 if avgnew < 150 else -30)}, {rgb_vals[2] + (30 if avgnew < 150 else -30)});
+                    color: {text_rgb_str};
+                }}
+                /* Custom visual separator line */
+                QMenu::separator {{
+                    height: 1px;
+                    background-color: {"white" if avgnew < 150 else "black"};
+                    margin: 4px 8px;
+                }}
+                """)
         
         #need to set colourmenu attibutes individually for each QMenu dropdown segment
         self.colourMenu.setAttribute(Qt.WA_TranslucentBackground)
         self.browserMenu.setAttribute(Qt.WA_TranslucentBackground)
         self.cookieMenu.setAttribute(Qt.WA_TranslucentBackground)
+        self.Bookmark_menu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.Bookmark_menu.setAttribute(Qt.WA_TranslucentBackground)
 
         app.setStyleSheet(f"""
             /* Style the dropdown menu items */
@@ -2390,15 +2729,7 @@ class Browser(QMainWindow):
     
 if __name__ == "__main__":
     # Register scheme FIRST - before QApplication or any dialogs
-    scheme = QWebEngineUrlScheme(b"MidnightWatch")
-    scheme.setFlags(
-        QWebEngineUrlScheme.Flag.SecureScheme |
-        QWebEngineUrlScheme.Flag.LocalScheme |
-        QWebEngineUrlScheme.Flag.LocalAccessAllowed |
-        QWebEngineUrlScheme.Flag.CorsEnabled |
-        QWebEngineUrlScheme.Flag.FetchApiAllowed
-    )
-    QWebEngineUrlScheme.registerScheme(scheme)
+    registerScheme()
     qInstallMessageHandler(qt_message_router)
     
     # NOW create the application
@@ -2409,7 +2740,8 @@ if __name__ == "__main__":
     handoff_path = f"{srcSourceDir}/data/currentProfile.json"
 
     if os.path.exists(handoff_path):
-    
+        
+        print("loading from profile")
         with open(handoff_path) as f:
             selectedProfile = json.load(f)
         

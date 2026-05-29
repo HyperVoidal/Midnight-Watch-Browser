@@ -41,16 +41,3 @@
     console.log("AdBlocker: seekable property already locked.");
   }
 })();
-
-
-//Passive logger for seeing how the ads and youtube backend responds, and if it works
-
-/* new PassiveLogger(() => {
-  const v = document.querySelector('video');
-  if (v && v.seekable.length === 0) {
-    console.debug('[ad?] non-seekable video detected');
-  }
-}).observe(document.documentElement, { subtree: true, childList: true });
- */
-
-//TODO: figure out how to deploy these into pages just before url load... integration in network_contoller maybe? 

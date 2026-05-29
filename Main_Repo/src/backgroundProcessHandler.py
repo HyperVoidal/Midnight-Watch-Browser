@@ -58,7 +58,7 @@ class SecureDnsMonitor(QObject):
                     app_icon=f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png",
                     app_name="Midnight Watch",
                     title="DNS Alert",
-                    message=("Midnight Engine has detected that the current connection is not allowing a secure DNS connection. \n The browser has dropped to standard unencrypted connection to maintain activity. \n You can change this behaviour in settings.")
+                    message=("Midnight Watch has detected that the current connection is not allowing a secure DNS connection. \n The browser has dropped to standard unencrypted connection to maintain activity. \n You can change this behaviour in settings.")
                 )
 
 

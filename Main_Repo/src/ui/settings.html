@@ -26,7 +26,7 @@
             --text-QUICBrowse: "This setting enables QUIC browsing, which uses HTTP3 to deliver web content via UDP, making it faster but much more prone to loading errors and vulnerabilities. <break2> Enable at your own risk. <break2> This setting requires a restart to take effect.";
             --text-TabClose-CookieAction: "When disabled, closing a tab will set the browser to automatically delete all cookies remaining in the queue. <break2> When enabled, closing a tab will set the browser to automatically save all remaining cookies in the queue. <break2> We recommend keeping this disabled.";
             --text-DeGoogler: "Enables all degoogler systems for the browser in an attempt to strip out all non-essential processing and remove telemetry data sending. <break2> Note this will have the side effect of disabling some useful features too, including the inbuilt phishing website alerts in default chromium. This setting is recommended only for people who really know their way around the internet. Enable at your own risk. <break2> This setting requires a restart to take effect.";
-            --text-GPU-Safe-System: "This setting disables hardware acceleration for video decoding, which can improve stability on some systems with older or less compatible graphics hardware at the cost of increased CPU usage during video playback. <break2> Enable this if you experience frequent crashes, flickering screens, rendering failures, or freezes during video playback, especially on older computers. <break2> This setting requires a restart to take effect.";
+            --text-GPUSafeSystem: "This setting disables hardware acceleration for video decoding, which can improve stability on some systems with older or less compatible graphics hardware at the cost of increased CPU usage during video playback. <break2> Enable this if you experience frequent crashes, flickering screens, rendering failures, or freezes during video playback, especially on older computers. <break2> This setting requires a restart to take effect.";
             }
         
         html, body {
@@ -1429,6 +1429,18 @@
                         </div>
                     </div>
                     <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+                    <div class="control-row">
+                        <div class="input-group" requiresRestart>
+                            <label class="checkbox-container">
+                                <input type="checkbox" id ="AntiFingerprint" checked>
+                                <span class="checkmark"></span>
+                                Anti-Fingerprinting
+                                <a href="#" class="question-box" onclick="showInfo('Anti-Fingerprinting Measures', 'AntiFingerprint')">?</a>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="text-spacer"></div>
                     <hr class="separator-left">
                     <div class="text-spacer"></div>
                 </div>
@@ -2021,6 +2033,8 @@
 
             dataUploadLink(window.bridge, "GPUSafeSystem") // GPU Safe System Send
 
+            dataUploadLink(window.bridge, "AntiFingerprint") // Anti-fingerprinting system send
+
             //Tab Bar Position Sender and Date Input Sender in a shared dropdown click interpreter function called selectOption
             //Stack Order Controller Sender is linked to the movement trigger in the drop function
             
@@ -2055,7 +2069,9 @@
 
                dataDownloadLink(window.bridge, "DnsFallback", "DnsFallback") //DNS Fallback Receive
 
-                dataDownloadLink(window.bridge, "GPUSafeSystem", "GPUSafeSystem") //GPU Safe System Receive
+               dataDownloadLink(window.bridge, "GPUSafeSystem", "GPUSafeSystem") //GPU Safe System Receive
+
+               dataDownloadLink(window.bridge, "AntiFingerprint", "AntiFingerprint") //Anti Fingerprint System Receive 
 
 
             

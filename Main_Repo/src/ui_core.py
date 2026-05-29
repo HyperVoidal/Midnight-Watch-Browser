@@ -1,12 +1,10 @@
 import json
 from pathlib import Path
 import requests
-from PySide6.QtGui import QIcon, QTransform, QImage, QPixmap, QCursor, QPainter, QColor, QPalette, QFontMetrics, QDrag
+from PySide6.QtGui import *
 from PySide6.QtWidgets import *
-from PySide6.QtCore import QPoint, QRect, QSize, QTimer, QUrl, Qt, QPropertyAnimation, QEasingCurve, QDateTime, QMimeData, Signal
-from PySide6.QtWidgets import QTabWidget
-from PySide6.QtWidgets import QTabBar, QStylePainter, QStyleOptionTab, QStyle
-from PySide6.QtCore import QSize
+from PySide6.QtCore import *
+from PySide6.QtWidgets import *
 from functools import partial
 from cookieManager import CookieManager
 
@@ -27,6 +25,51 @@ def get_normIcon(name):
     icon_path = icon_cache_dir / f"{name}"
 
     return QIcon(str(icon_path))
+
+
+
+class additionalUIElements:
+    def __init__(self, parent):
+        self.parent = parent
+        
+
+    def WindowConfirmation(self, title, message, num=2):
+        parent=None
+        if isinstance(self.parent,QWidget):
+            parent=self.parent
+        elif hasattr(self.parent,"view"):
+            parent=self.parent.view()
+
+        msg_box=QMessageBox(parent)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+
+        if num==1:
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes)
+            yes_button=msg_box.button(QMessageBox.StandardButton.Yes)
+            yes_button.setText("Okay")
+            msg_box.exec()
+            return (msg_box.clickedButton() == yes_button)
+
+        elif num==2:
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg_box.exec()
+            return (msg_box.clickedButton() == msg_box.button(QMessageBox.StandardButton.Yes))
+        
+
+    def WindowInput(self, title, message, default_text=""):
+        text, ok = QInputDialog.getText(
+            self.parent,
+            title,
+            message,
+            QLineEdit.EchoMode.Normal,
+            default_text
+        )
+        if ok and text.strip():
+            return text.strip()
+        return None
+    
 
 class NewProfileDialog(QDialog):
     def __init__(self, parent=None, title="Create New Profile", placeholder="Enter profile name...", image=None, image_text="Profile Image:"):
@@ -214,6 +257,9 @@ class BarManager:
         self.url_bar.focusInEvent = self.parent._url_bar_focus_in
         self.parent.nav_bar.addWidget(self.url_bar)
         self.eColsStyle.append("url_bar")
+
+        self.url_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.url_bar.customContextMenuRequested.connect(self.parent.displayUrlBarContextMenu)
         return self.url_bar
 
 
@@ -281,6 +327,10 @@ class BarManager:
     def setup_statusbar(self, profile_icon=None, name=None):
         self.status_bar = QToolBar("Status")
         self.status_bar.setMovable(False)
+
+        self.status_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.status_bar.customContextMenuRequested.connect(lambda pos: self.parent.displayStatusBarContextMenu(pos, self.status_bar, "Status Bar"))
+
         self.eColsStyle.append("status_bar")
 
         #spacer widget
@@ -312,6 +362,9 @@ class BarManager:
         self.zoomDisplay.clicked.connect(lambda: self.zoom_slider.setValue(100))
         self.zoom_slider.valueChanged.connect(lambda value: (self.zoomDisplay.setText(f"{value}%"), self.on_zoom_slider_moved(value)))
 
+        self.zoomDisplay.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.zoomDisplay.customContextMenuRequested.connect(lambda pos: self.parent.displayStatusBarContextMenu(pos, self.zoomDisplay, "zoomDisplay"))
+
         self.profileDisplay = QPushButton(name if name else "Ephemeral")
         if profile_icon:
             try:
@@ -327,6 +380,9 @@ class BarManager:
                 print(f"Error loading profile icon: {e}")
         #is there a way to make this reopen the profile selection menu?
         self.profileDisplay.clicked.connect(self.parent.open_profile_menu)
+
+        self.profileDisplay.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.profileDisplay.customContextMenuRequested.connect(lambda pos: self.parent.displayStatusBarContextMenu(pos, self.profileDisplay, "profileDisplay"))
 
 
 
@@ -435,7 +491,7 @@ class BarManager:
 
                 #Right click context menu 
                 Bbutton.setContextMenuPolicy(Qt.CustomContextMenu)
-                Bbutton.customContextMenuRequested.connect(partial(self.show_bookmark_menu, Bbutton, bid, bookmarkData))
+                Bbutton.customContextMenuRequested.connect(partial(self.parent.displayBookmarksContextMenu, Bbutton, bid, bookmarkData))
 
                 self.bookmarks_bar.addAction(Bbutton_action)
 
@@ -444,38 +500,6 @@ class BarManager:
 
         return self.bookmarks_bar
     
-    def show_bookmark_menu(self, button, bid, pos, bookmarksData):
-        menu = QMenu()
-
-        data = bookmarksData
-
-        bookmark = data[bid]
-        name = bookmark["name"]
-        url = bookmark["url"]
-
-        rename = menu.addAction("Rename")
-        delete = menu.addAction("Delete")
-        open_tab = menu.addAction("Open in New Tab")
-
-        action = menu.exec(button.mapToGlobal(pos))
-
-        if action == rename:
-            new_name = self.parent.WindowInput(
-                "Rename Bookmark", "Enter new name:", default_text=name
-            )
-
-            if new_name:
-                data[bid]["name"] = new_name
-
-                bookmarkData = data
-
-                self.refresh_bookmarksbar(bookmarkData)
-
-        elif action == delete:
-            self.parent.remove_bookmark(bid)
-
-        elif action == open_tab:
-            self.parent.add_new_tab(qurl=url, label=name)
 
     def refresh_bookmarksbar(self, bookmarksData):
         self.bookmarks_bar.clear()
@@ -518,6 +542,26 @@ class BarManager:
         except (json.decoder.JSONDecodeError, UnboundLocalError):
             print("Can't refresh bookmarks as none exist in the json file!")
             pass
+    
+    
+    def setupContextMenu(self):
+        # Parent it to the main window/browser class
+        RContextMenu = QMenu(self.parent)
+
+        # Default button actions
+        backClick = QAction("Go Back", self.parent)
+        backClick.triggered.connect(self.parent.go_back)
+        RContextMenu.addAction(backClick)
+
+        forwardClick = QAction("Go Forward", self.parent)
+        forwardClick.triggered.connect(self.parent.go_forward)
+        RContextMenu.addAction(forwardClick)
+
+        reloadClick = QAction("Reload Page", self.parent)
+        reloadClick.triggered.connect(self.parent.reload_tab)
+        RContextMenu.addAction(reloadClick)
+
+        return RContextMenu
 
 
     def ButtonConstructor(self, name, tooltip, icon, handler_name):
@@ -538,6 +582,10 @@ class BarManager:
             print(f"WARNING! Handler name {handler_name} not found")
         
         self.eColsButton.append(name)
+
+        btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        btn.customContextMenuRequested.connect(lambda pos, b=btn: self.parent.displayContextMenu(pos, b))
+
         
         return btn
     
@@ -598,6 +646,9 @@ class BarManager:
         self.parent.nav_bar.addWidget(self.colourpalette_btn)
         self.eColsButton.append("colourpalette_btn")
 
+        self.colourpalette_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.colourpalette_btn.customContextMenuRequested.connect(lambda pos, b=self.colourpalette_btn: self.parent.displayContextMenu(pos, b))
+
         return self.colourpalette_btn, self.ColourMenu
 
     def setup_engine_button(self, engines):
@@ -641,6 +692,8 @@ class BarManager:
         self.engine_btn.setPopupMode(QToolButton.MenuButtonPopup)
         self.parent.nav_bar.addWidget(self.engine_btn)
 
+        self.engine_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.engine_btn.customContextMenuRequested.connect(lambda pos, b=self.engine_btn: self.parent.displayContextMenu(pos, b))
 
         self.parent.set_engine(self.parent.engine)
 
@@ -659,6 +712,9 @@ class BarManager:
         self.cookie_btn.setIcon(get_normIcon("cookie"))
         self.cookie_btn.setPopupMode(QToolButton.InstantPopup)
         self.nav_bar.addWidget(self.cookie_btn)
+
+        self.cookie_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.cookie_btn.customContextMenuRequested.connect(lambda pos, b=self.cookie_btn: self.parent.displayContextMenu(pos, b))
 
         return self.cookie_btn, self.cookieMenu
     
@@ -749,6 +805,27 @@ class BarManager:
         self.cookieMenu.addAction(menu_scroll_action)
 
         return self.cookieMenu
+    
+
+    def get_muted_icon(self, original_icon):
+        # Convert your existing icon into a pixel map (standard 16x16 size for tabs)
+        pixmap = original_icon.pixmap(16, 16)
+        
+        # Initialize a painter to draw directly onto the image
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Define a thick, clean red line for the slash
+        pen = QPen(QColor("red"), 2) 
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        
+        # Draw a diagonal line from top-right to bottom-left
+        painter.drawLine(14, 2, 2, 14)
+        painter.end()
+        
+        # Return it as a brand new QIcon
+        return QIcon(pixmap)
     
 
 
@@ -969,3 +1046,330 @@ class VerticalTabBar(QTabBar):
                     Qt.AlignVCenter | Qt.AlignLeft,
                     text
                 )
+
+
+class DynamicRatioButton(QPushButton):
+    def __init__(self, name, ratio, parent=None):
+        super().__init__(name, parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.ratio = ratio
+
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        new_height = int(self.width() / self.ratio)
+        self.setFixedHeight(new_height)
+
+
+class SystemHelperUI(QDialog):
+    def __init__(self, parent, displayData, buttonClicked, selectedFromSettings):
+        super().__init__(parent)
+        self.setWindowTitle("Midnight Watch Help")
+        self.resize(900, 600)
+        self.setWindowIcon(get_normIcon("tightlyCroppedIcon.png"))
+        self.parent = parent
+        self.displayData = displayData
+        self.ratio_buttons = []
+        self.buttonClicked = buttonClicked
+        self.sidebar_buttons = {}
+        self.selectedFromSettings = selectedFromSettings
+
+        self.NormalStyle = """
+            QPushButton {
+                background-color: rgb(60,60,75);
+                color:white;
+                border:2px solid rgb(63,129,255);
+                border-radius:5px;
+                font-size:14px;
+                font-weight:bold;
+            }
+
+            QPushButton:hover {
+                background-color: rgb(70,70,85);
+                border:2px solid rgb(96,151,253);
+            }
+
+            QPushButton QLabel {
+                background: transparent;
+                border: none;
+                color: white;
+            }
+            """
+
+        self.SelectedStyle = """
+            QPushButton {
+                background-color: rgb(85,105,160);
+                color:white;
+                border:4px solid #3f81ff;
+                border-radius:25px;
+                font-size:14px;
+                font-weight:bold;
+            }
+
+            QPushButton:hover {
+                background-color: rgb(100,120,180);
+            }
+
+            QPushButton QLabel {
+                background: transparent;
+                border: none;
+                color: white;
+            }
+            """
+        
+        self.init_ui()
+
+    def init_ui(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgb(45, 45, 60);
+            }
+        """)
+
+        # Main horizontal layout for the dialog window
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
+
+        # LEFT SIDEBAR: Outer Scroll Area
+        sidebarFrame = QWidget()
+        sidebarFrame.setObjectName("sidebarFrame")
+        sidebarFrame.setStyleSheet("""
+            QWidget#sidebarFrame{
+                background-color: rgb(45,45,60);
+                border-radius:15px;
+                border:5px solid #3f81ff;
+            }
+        """)
+        sidebarLayout = QVBoxLayout(sidebarFrame)
+        sidebarLayout.setContentsMargins(15,15,15,15)
+
+
+
+        self.dataSelectArea = QScrollArea()
+        self.dataSelectArea.setObjectName("dataSelectArea")
+        self.dataSelectArea.setWidgetResizable(True)
+        self.dataSelectArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.dataSelectArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.dataSelectArea.setStyleSheet("""
+            QScrollArea#dataSelectArea{
+                background-color: rgb(45, 45, 60);
+                border: none;
+                border-radius:15px;
+            }
+            QScrollBar:vertical {
+                background: rgb(45, 45, 60);
+                width: 12px;
+                border-radius:15px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgb(85, 85, 105);
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgb(110, 110, 135);
+            }
+        """)
+        self.dataSelectArea.viewport().setStyleSheet("""
+            background-color: rgb(45,45,60);
+            border-radius:15px;
+        """)
+
+        # LEFT SIDEBAR: Inner Container Widget
+        self.dataSelectContainer = QWidget()
+
+        # Layout inside the left sidebar container
+        self.buttonBox = QVBoxLayout(self.dataSelectContainer)
+        self.buttonBox.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.buttonBox.setSpacing(15)
+        self.buttonBox.setContentsMargins(15, 15, 15, 15)
+
+        for key, value in self.displayData.items():
+            self.buttonBox.addStretch()
+            
+            name = value[1]
+
+            icon = QIcon()
+            iconPixmap = (QPixmap(f"{srcSourceDir}/ui/icon_cache/{value[2]}"))
+            icon.addPixmap(iconPixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))            
+
+
+            btn = DynamicRatioButton(name=name, ratio=3)
+            btn.setIcon(icon)
+            btn.setStyleSheet(self.NormalStyle)
+            self.ratio_buttons.append(btn)
+            
+
+            internal_id = value[1]
+            self.sidebar_buttons[internal_id] = btn
+
+
+
+            self.buttonBox.addWidget(btn)
+
+            btn.clicked.connect(lambda checked=False, iid=internal_id: self.selectButton(iid))
+
+
+
+        # Attach inner container to the left scroll area
+        self.dataSelectArea.setWidget(self.dataSelectContainer)
+
+        # RIGHT CONTENT: Main Area
+        self.content_area = QScrollArea()
+        self.content_area.setWidgetResizable(True)
+        self.content_area.setStyleSheet("""
+            QScrollArea {
+                background-color: rgb(45, 45, 60); 
+                border-radius: 15px; 
+                border: 5px solid #3f81ff;
+            }
+        """)
+
+        sidebarLayout.addWidget(self.dataSelectArea)
+        main_layout.addWidget(sidebarFrame, stretch=3)
+        main_layout.addWidget(self.content_area, stretch=10)
+
+        if not self.selectedFromSettings:
+            QTimer.singleShot(0, lambda: self.selectButton(self.buttonClicked))
+        else:
+            self.renderMainUI("Starting")
+
+    def selectButton(self, selected_id):
+        self.buttonClicked = selected_id
+        for internal_id, btn in self.sidebar_buttons.items():
+            if internal_id == selected_id:
+                btn.setStyleSheet(self.SelectedStyle)
+                self.renderMainUI(self.buttonClicked)
+            else:
+                btn.setStyleSheet(self.NormalStyle)
+    
+    def renderMainUI(self, SelectedUI):
+        print(SelectedUI)
+        
+        self.contentWidget = QWidget()
+
+        self.contentLayout = QVBoxLayout()
+        self.contentLayout.setContentsMargins(20, 20, 20, 20)
+        self.contentLayout.setSpacing(20)
+        self.contentWidget.setStyleSheet("background: transparent;")
+
+
+        title = QLabel(SelectedUI + " Help")
+        title.setStyleSheet("""
+            color: #3f81ff;
+            font-size: 25px;
+            font-weight: 800;
+        """)
+        self.contentLayout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.contentLayout.addSpacing(35)
+
+
+        data = self.returnMainDisplay(SelectedUI)
+        for key, value in data.items():
+            if "text" in key:
+                text = QLabel(value)
+                text.setStyleSheet("""
+                    color: white;
+                    font-size: 15px;
+                    line-height: 1.6;
+                    margin-bottom: 20px;
+                """)            
+                self.contentLayout.addWidget(text, alignment=Qt.AlignmentFlag.AlignLeft)
+            
+            if "image" in key:
+                image = QPixmap(value)
+                if not image.isNull():
+                    imageScaled = image.scaled(self.contentWidget.width()/1.2, self.contentWidget.height()/1.2, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    label = QLabel()
+                    label.setStyleSheet("border-radius: 15px; border: 4px solid #3f81ff;")
+                    label.setPixmap(imageScaled)
+                    label.setToolTip(value)
+                    self.contentLayout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
+            
+            if "subtitle" in key:
+                subtitle = QLabel(value)
+                subtitle.setStyleSheet("""
+                    color: #ffeb78;
+                    font-size: 20px;
+                    font-weight: 700;
+                    line-height: 2;
+                    margin-bottom: 25px;
+                    text-decoration: underline;
+                """) 
+                self.contentLayout.addWidget(subtitle, alignment=Qt.AlignmentFlag.AlignLeft)
+
+
+        self.contentLayout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.contentWidget.setLayout(self.contentLayout)
+        self.content_area.setWidget(self.contentWidget)
+
+
+    def returnMainDisplay(self, SelectedUI):
+        DisplayUIText = {
+            "Back" : {
+                "subtitle1": "The back button",
+                "text1": "This is the back button! (no it isn't)",
+                "image1": f"{srcSourceDir}/ui/images/MainImageBackground.png",
+                "text2": "This is the image",
+                "text3": "If I provide enough text here \n\n this should \n\n begin to \n\n overflow \n\n off the screen"
+            },
+            "Forward": {
+                "text1": "The forward button",
+                "image1": ""
+            },
+            "Home": {
+                "text1": "The home button",
+                "image1": ""
+            },
+            "Reload": {
+                "text1": "The reload button",
+                "image1": ""
+            },
+            "Settings": {
+                "text1": "The settings button",
+                "image1": ""
+            },
+            "New Tab": {
+                "text1": "The new tab button",
+                "image1": ""
+            },
+            "Colour Palettes": {
+                "text1": "The colour palettes button",
+                "image1": ""
+            },
+            "Engines": {
+                "text1": "The engine button",
+                "image1": ""
+            },
+            "Cookies": {
+                "text1": "The cookies button",
+                "image1": ""
+            },
+            "Tabs": {
+                "text1": "The tabs display",
+                "image1": ""
+            },
+            "Bookmarks": {
+                "text1": "The bookmarks display",
+                "image1": ""
+            },
+            "Url Bar": {
+                "text1": "The url bar",
+                "image1": ""
+            },
+            "Zooming": {
+                "text1": "Zooming is",
+                "image1": ""
+            },
+            "Profiles": {
+                "text1": "Profiles are",
+                "image1": ""
+            },
+            "Status Bar": {
+                "text1": "The status bar is",
+                "image1": ""
+            }
+        }
+
+        return DisplayUIText[SelectedUI]
+
+        
