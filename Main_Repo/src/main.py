@@ -312,15 +312,26 @@ def qt_message_router(msg_type, context, message):
     if msg_type in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg):
         GPUErrorMonitor.process_line(message)
     
-    if msg_type == QtMsgType.QtDebugMsg:
-        print(f"Debug: {message}")
-    elif msg_type == QtMsgType.QtWarningMsg:
-        print(f"Warning: {message}")
-    elif msg_type == QtMsgType.QtCriticalMsg:
-        print(f"Critical: {message}")
-    elif msg_type == QtMsgType.QtFatalMsg:
-        print(f"Fatal: {message}")
-        sys.exit(-1)
+    try:
+        if msg_type == QtMsgType.QtDebugMsg:
+            print(f"Debug: {context}, {message}")
+        elif msg_type == QtMsgType.QtWarningMsg:
+            print(f"Warning: {context}, {message}")
+        elif msg_type == QtMsgType.QtCriticalMsg:
+            print(f"Critical: {context}, {message}")
+        elif msg_type == QtMsgType.QtFatalMsg:
+            print(f"Fatal: {context}, {message}")
+            sys.exit(-1)
+    except:
+        if msg_type == QtMsgType.QtDebugMsg:
+            print(f"Debug: {context.toString()}, {message}")
+        elif msg_type == QtMsgType.QtWarningMsg:
+            print(f"Warning: {context.toString()}, {message}")
+        elif msg_type == QtMsgType.QtCriticalMsg:
+            print(f"Critical: {context.toString()}, {message}")
+        elif msg_type == QtMsgType.QtFatalMsg:
+            print(f"Fatal: {context.toString()}, {message}")
+            sys.exit(-1)
 
 
 
@@ -2180,18 +2191,12 @@ class Browser(QMainWindow):
         browser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         browser.customContextMenuRequested.connect(lambda pos: self.displayWebContextMenu(pos))
 
-
         new_page = InternalPage(self.profile, browser)
-        #instantiate object communication bridge for internal page
-        bridge = objectMasterBridge(self, new_page)
-        bridge.searchRequested.connect(self.htmlSearch)
-        channel = QWebChannel(new_page)
-        channel.registerObject("pyBridge", bridge)
-        new_page.setWebChannel(channel)
-        new_page.bridge = bridge
-        new_page.channel = channel
 
         browser.setPage(new_page)
+
+        self.configure_bridge(qurl, browser)
+
         browser.setUrl(qurl)
 
         self.tab_zoom_values[browser] = 100
@@ -2207,7 +2212,7 @@ class Browser(QMainWindow):
 
         # Connect signals
         new_page.iconChanged.connect(lambda: self.update_tab_icon(browser))
-        browser.urlChanged.connect(lambda qurl, browser=browser: self.update_tab_title(browser))
+        browser.urlChanged.connect(lambda qurl, browser=browser: (self.update_tab_title(browser), self.on_url_changed(qurl, browser)))
         browser.loadStarted.connect(lambda: self.barManager.start_reload_animation())
         browser.loadFinished.connect(lambda ok, b=browser: (self.barManager.stop_reload_animation(), self.on_load_finished(browser)))
         browser.titleChanged.connect(lambda title, browser=browser, i=i: (self.update_tab_title(browser, title), self.tabs.setTabToolTip(i, f"{title}\n{self.UrlManager.normalise_url(browser.url().toString())}")))
@@ -2224,8 +2229,8 @@ class Browser(QMainWindow):
         return browser
     
     def on_url_changed(self, qurl, browser):
-        if browser != self.current_browser:
-            return
+        
+        self.configure_bridge(qurl, browser)
 
         clean = self.UrlManager.normalise_url(qurl.toString())
         self.url_bar.setText(clean)
@@ -2371,10 +2376,12 @@ class Browser(QMainWindow):
 
     def load_url(self, qurl=None, label=None):
         if qurl is not None:
+            self.configure_bridge(qurl, self.current_browser)
             self.current_browser.setUrl(qurl)
             if label is not None:
                 self.update_tab_title(self.current_browser, title=label)
             return
+
 
         input_text = self.url_bar.text().strip()
         if not input_text:
@@ -2406,7 +2413,38 @@ class Browser(QMainWindow):
         raw_url = self.current_browser.url().toString()
         clean_url = self.UrlManager.normalise_url(raw_url)
         self.url_bar.setText(clean_url)
-        
+
+    def configure_bridge(self, target_url, browser=None):
+        if browser is None:
+            browser = self.current_browser
+
+        page = browser.page()
+        is_internal = (target_url.scheme().lower() == "midnightwatch" and target_url.host().lower() == "local")
+
+        if is_internal:
+            if getattr(page, "bridge", None) is None:
+                bridge = objectMasterBridge(self, page)
+                bridge.searchRequested.connect(self.htmlSearch)
+                channel = QWebChannel(page)
+                channel.registerObject("pyBridge", bridge)
+                page.setWebChannel(channel)
+                page.bridge = bridge
+                page.channel = channel
+                print("Bridge attached.")
+
+        else:
+
+            if getattr(page, "channel", None):
+                page.setWebChannel(None)
+                if page.bridge:
+                    page.bridge.deleteLater()
+                if page.channel:
+                    page.channel.deleteLater()
+                page.bridge = None
+                page.channel = None
+                print("Bridge removed.")
+            else:
+                print("Skipped")
 
 
 

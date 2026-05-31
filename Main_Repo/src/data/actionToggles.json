@@ -19,7 +19,7 @@
     "Time-Display": "hh:mm AP",
     "Name": "Default",
     "Greeting": true,
-    "Blur": 9,
+    "Blur": 10,
     "Image-Url": "MainImageBackground.png",
     "Colour-Theme": "Secured Blue",
     "Utilise-QUIC-Browsing": true,
