@@ -137,7 +137,7 @@ class NewProfileDialog(QDialog):
         filepath, _ = QFileDialog.getOpenFileName(
             self,
             "Select Profile Image",
-            "",
+            f"{srcSourceDir}/ui/images",
             "Images (*.png *.jpg *.jpeg *.webp *.bmp)"
         )
 
@@ -145,11 +145,7 @@ class NewProfileDialog(QDialog):
             self.image_path = filepath
 
             pixmap = QPixmap(filepath)
-            pixmap = pixmap.scaled(
-                64,64,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
+            pixmap = pixmap.scaled(64,64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
             self.imagePreview.setPixmap(pixmap)
 
@@ -1307,7 +1303,7 @@ class SystemHelperUI(QDialog):
         DisplayUIText = {
             "Back" : {
                 "subtitle1": "The back button",
-                "text1": "This is the back button! (no it isn't)",
+                "text1": "This is the back button!",
                 "image1": f"{srcSourceDir}/ui/images/MainImageBackground.png",
                 "text2": "This is the image",
                 "text3": "If I provide enough text here \n\n this should \n\n begin to \n\n overflow \n\n off the screen"

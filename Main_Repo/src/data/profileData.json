@@ -36,8 +36,7 @@
             "Utilise-QUIC-Browsing": true,
             "DeGoogler": false,
             "Dns-Fallback": true,
-            "GPU-Safe-System": true,
-            "Anti-Fingerprinting": true
+            "GPU-Safe-System": true
         }
     },
     "id1": {
@@ -77,8 +76,7 @@
             "Utilise-QUIC-Browsing": false,
             "DeGoogler": false,
             "Dns-Fallback": false,
-            "GPU-Safe-System": true,
-            "Anti-Fingerprinting": false
+            "GPU-Safe-System": true
         }
     },
     "id2": {
@@ -114,8 +112,7 @@
             "Utilise-QUIC-Browsing": false,
             "DeGoogler": true,
             "Dns-Fallback": false,
-            "GPU-Safe-System": true,
-            "Anti-Fingerprinting": true
+            "GPU-Safe-System": true
         }
     }
 }

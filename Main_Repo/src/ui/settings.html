@@ -1429,18 +1429,6 @@
                         </div>
                     </div>
                     <div class="text-spacer"></div>
-                    <div class="text-spacer"></div>
-                    <div class="control-row">
-                        <div class="input-group" requiresRestart>
-                            <label class="checkbox-container">
-                                <input type="checkbox" id ="AntiFingerprint" checked>
-                                <span class="checkmark"></span>
-                                Anti-Fingerprinting
-                                <a href="#" class="question-box" onclick="showInfo('Anti-Fingerprinting Measures', 'AntiFingerprint')">?</a>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="text-spacer"></div>
                     <hr class="separator-left">
                     <div class="text-spacer"></div>
                 </div>
@@ -1568,7 +1556,6 @@
         window.onload = function() {
             const colorPicker = document.getElementById('rgbInput');
             const hexLabel = document.getElementById('hexValue');
-
             if (colorPicker && hexLabel) {
                 colorPicker.addEventListener('input', (e) => {
                     hexLabel.textContent = e.target.value.toUpperCase();
@@ -1608,17 +1595,26 @@
         };
 
         function openNativeFilePicker() {
-            window.bridge.openFileDialog((filePath) => {
-                if (filePath) {
-                    // Read the file and process it
-                    fetch('file:///' + filePath.replace(/\\/g, '/'))
-                        .then(response => response.blob())
-                        .then(blob => {
-                            const file = new File([blob], filePath.split(/[\\/]/).pop(), { type: blob.type });
-                            handleFiles([file], bgDropArea);
-                        })
-                        .catch(err => console.error("File read error:", err));
-                }
+
+            window.bridge.openFileDialog((result)=>{
+
+                if (!result || !result.data)
+                    return;
+
+                fetch(result.data)
+                    .then(res => res.blob())
+                    .then(blob => {
+
+                        const file = new File(
+                            [blob],
+                            result.name,
+                            { type: result.mime }
+                        );
+
+                        handleFiles([file], bgDropArea);
+
+                    });
+
             });
         }
 
@@ -2033,8 +2029,6 @@
 
             dataUploadLink(window.bridge, "GPUSafeSystem") // GPU Safe System Send
 
-            dataUploadLink(window.bridge, "AntiFingerprint") // Anti-fingerprinting system send
-
             //Tab Bar Position Sender and Date Input Sender in a shared dropdown click interpreter function called selectOption
             //Stack Order Controller Sender is linked to the movement trigger in the drop function
             
@@ -2070,10 +2064,6 @@
                dataDownloadLink(window.bridge, "DnsFallback", "DnsFallback") //DNS Fallback Receive
 
                dataDownloadLink(window.bridge, "GPUSafeSystem", "GPUSafeSystem") //GPU Safe System Receive
-
-               dataDownloadLink(window.bridge, "AntiFingerprint", "AntiFingerprint") //Anti Fingerprint System Receive 
-
-
             
             };
 

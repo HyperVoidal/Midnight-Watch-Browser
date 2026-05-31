@@ -31,6 +31,7 @@ from ui_core import *
 from cookieManager import CookieManager
 from backgroundProcessHandler import SecureDnsMonitor, GPULogMonitor
 
+
 print("PyQt6 Version: " + PySide6.__version__)
 print("Internal Chromium Version: " + qWebEngineChromiumVersion())
 #Icon cache 
@@ -69,30 +70,6 @@ for key, value in engineData.items():
     if value["active"] == True:
         engine = key
 
-#Multiple hardware profiles for different rendering systems
-HARDWARE_PROFILES = [
-    {
-        "cores": 4, 
-        "ram": 8, 
-        "vendor": "Intel Inc.", 
-        "renderer": "Intel(R) UHD Graphics 630",
-        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    },
-    {
-        "cores": 8, 
-        "ram": 16, 
-        "vendor": "Google Inc. (NVIDIA)", 
-        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)",
-        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    },
-    {
-        "cores": 8, 
-        "ram": 8, 
-        "vendor": "Apple", 
-        "renderer": "Apple M1",
-        "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    }
-]
 #print("ENGINES LIST FROM JSON: ", engines)
 print("Startup Selected Engine: ", engine)
 
@@ -324,7 +301,12 @@ GPU_ERROR_REGEX = re.compile(PATTERN_STRING)
 GPUErrorMonitor = GPULogMonitor(time_window=5.0, severity_threshold=10, error_regex=GPU_ERROR_REGEX, fatalPatterns=FatalGPUPatterns)
 
 def qt_message_router(msg_type, context, message):
+    #Remove connection refused error because the notification system is now in place
     if "error -101" in message or "SSL" in message or "net::ERR_CONNECTION_REFUSED" in message:
+        return
+    #turn off the qt logging for webenginecontext because it's unimportant noise for the devtools window as a result of pyqt6 stripping parts of chromium
+    #also because fixing it is near impossible and it's driving me nuts
+    if "Autofill.enable" in message or "Autofill.setAddresses" in message:
         return
 
     if msg_type in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg):
@@ -472,9 +454,6 @@ class objectMasterBridge(QObject):
 
             if dataHeader == "GPUSafeSystem":
                 settingsData["GPU-Safe-System"] = (str(dataValue).lower() == "true")
-
-            if dataHeader == "AntiFingerprint":
-                settingsData["Anti-Fingerprinting"] = (str(dataValue).lower() == "true")
             
             if dataHeader == "imageUpload":
                 fileInfo = dataValue
@@ -710,24 +689,43 @@ class objectMasterBridge(QObject):
 
         elif key == "GPUSafeSystem":
             return str(settingsData["GPU-Safe-System"])
-        
-        elif key == "AntiFingerprint":
-            return str(settingsData["Anti-Fingerprinting"])
             
         else:
             return f"Error: Key: {str(key)} not found"
 
     
-    @Slot(result=str)
+    @Slot(result='QVariant')
     def openFileDialog(self):
-        """Open native file dialog and return selected file path"""
-        file_path, _ = QFileDialog.getOpenFileName(
+
+        path, _ = QFileDialog.getOpenFileName(
             None,
-            "Select Background Image",
-            f"{srcSourceDir}/ui/images",  # Starting directory
-            "Image Files (*.png *.jpg *.jpeg *.gif *.bmp *.webp);;All Files (*)"
+            "Select image",
+            f"{srcSourceDir}/ui/images",
+            "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp)"
         )
-        return file_path if file_path else ""
+
+        if not path:
+            return {}
+
+        with open(path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+
+        suffix = Path(path).suffix.lower()
+
+        mime = {
+            ".png":"image/png",
+            ".jpg":"image/jpeg",
+            ".jpeg":"image/jpeg",
+            ".gif":"image/gif",
+            ".bmp":"image/bmp",
+            ".webp":"image/webp"
+        }.get(suffix, "application/octet-stream")
+
+        return {
+            "name": Path(path).name,
+            "mime": mime,
+            "data": f"data:{mime};base64,{encoded}"
+        }
         
 
     #Button deferred update system, call only on apply press to avoid overloading or potentially corrupting the main data storage file.
@@ -1198,11 +1196,6 @@ class Browser(QMainWindow):
         global eColsButton
         global sensitivity
 
-        self.hardwareProfiles = HARDWARE_PROFILES
-
-        self.fingerprintInjectionProfile = random.choice(self.hardwareProfiles)
-        print(f"Anti-Fingerprint profile: {self.fingerprintInjectionProfile}")
-
         #update main loader json file with the info selected from the profile
         profileData = profile_config["stored_data"]
         self.profile_config = profile_config
@@ -1212,16 +1205,24 @@ class Browser(QMainWindow):
         else:
             self.profile = QWebEngineProfile("PersistentUser", self)
 
-        #Set up adjusted user-agent if fingerprinting enabled
-        if profileData["Anti-Fingerprinting"] == True:
-            self.profile.setHttpUserAgent(self.fingerprintInjectionProfile["ua"])
-
         #Assign URL Scheme to page loaders
         self.handler = UrlCustomSchemeManager()
         self.profile.installUrlSchemeHandler(b"midnightwatch", self.handler)
 
-        #create browser widgets
+        #Create browser widgets
         self.current_browser = QWebEngineView(self)
+        
+        #Link webview to context menu to override main caller class
+        self.current_browser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.current_browser.customContextMenuRequested.connect(lambda pos: self.displayWebContextMenu(pos))
+
+        #Create devtools window link #1
+        self.devtools_view = QWebEngineView()
+        self.devtools_page = QWebEnginePage(self.current_browser.page().profile(), self.devtools_view)
+        self.devtools_view.setPage(self.devtools_page)
+        self.current_browser.page().setDevToolsPage(self.devtools_page)
+        self.devtools_view.closeEvent = self.devtoolsCloseEvent
+
 
         self.is_restarting = False
         self.pending_restart = False
@@ -1384,7 +1385,7 @@ class Browser(QMainWindow):
         self.SelectColourTheme(self.selectedprofile, Colourdata)
 
         #Deploy js code when webpage starts
-        EVAdInterceptor.deployPayload(browser=self.current_browser, profile=self.profile, injectionData=self.fingerprintInjectionProfile)
+        EVAdInterceptor.deployPayload(browser=self.current_browser, profile=self.profile)
 
 
         #Actions list using commands
@@ -1646,7 +1647,12 @@ class Browser(QMainWindow):
         
         # Loop backwards through actions to safely remove elements without breaking index positions
         for action in reversed(self.RContextMenu.actions()):
-            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+            if action.objectName() in ["dynamic_help_action", 
+                                        "dynamic_bookmark_action", 
+                                        "dynamic_tab_action", 
+                                        "dynamic_url_action", 
+                                        "dynamic_status_action",
+                                        "dynamic_web_action"]:
                 self.RContextMenu.removeAction(action)
                 action.deleteLater() # Clean up the memory instantly
         
@@ -1689,7 +1695,12 @@ class Browser(QMainWindow):
             return
 
         for action in reversed(self.RContextMenu.actions()):
-            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+            if action.objectName() in ["dynamic_help_action", 
+                                        "dynamic_bookmark_action", 
+                                        "dynamic_tab_action", 
+                                        "dynamic_url_action", 
+                                        "dynamic_status_action",
+                                        "dynamic_web_action"]:
                 self.RContextMenu.removeAction(action)
                 action.deleteLater()
 
@@ -1731,7 +1742,12 @@ class Browser(QMainWindow):
     def displayStatusBarContextMenu(self, pos, widget, buttonName):
     
         for action in reversed(self.RContextMenu.actions()):
-            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+            if action.objectName() in ["dynamic_help_action", 
+                                        "dynamic_bookmark_action", 
+                                        "dynamic_tab_action", 
+                                        "dynamic_url_action", 
+                                        "dynamic_status_action",
+                                        "dynamic_web_action"]:
                 self.RContextMenu.removeAction(action)
                 action.deleteLater()
 
@@ -1769,7 +1785,12 @@ class Browser(QMainWindow):
             
         # Clear out previous dynamic actions safely
         for action in reversed(self.RContextMenu.actions()):
-            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+            if action.objectName() in ["dynamic_help_action", 
+                                        "dynamic_bookmark_action", 
+                                        "dynamic_tab_action", 
+                                        "dynamic_url_action", 
+                                        "dynamic_status_action",
+                                        "dynamic_web_action"]:
                 self.RContextMenu.removeAction(action)
                 action.deleteLater()
 
@@ -1809,7 +1830,12 @@ class Browser(QMainWindow):
     def displayBookmarksContextMenu(self, button, bid, bookmarksData, pos):
         #Clear out old help actions or previous bookmark actions from the main menu first
         for action in reversed(self.RContextMenu.actions()):
-            if action.objectName() in ["dynamic_help_action", "dynamic_bookmark_action", "dynamic_tab_action", "dynamic_url_action", "dynamic_status_action"]:
+            if action.objectName() in ["dynamic_help_action", 
+                                        "dynamic_bookmark_action", 
+                                        "dynamic_tab_action", 
+                                        "dynamic_url_action", 
+                                        "dynamic_status_action",
+                                        "dynamic_web_action"]:
                 self.RContextMenu.removeAction(action)
                 action.deleteLater()
 
@@ -1862,6 +1888,156 @@ class Browser(QMainWindow):
         if new_name:
             data[bid]["name"] = new_name
             self.refresh_bookmarksbar(data)
+
+
+    def displayWebContextMenu(self, pos):
+        # cleanup existing dynamic actions
+        for action in reversed(self.RContextMenu.actions()):
+            if action.objectName() in ["dynamic_help_action", 
+                                        "dynamic_bookmark_action", 
+                                        "dynamic_tab_action", 
+                                        "dynamic_url_action", 
+                                        "dynamic_status_action",
+                                        "dynamic_web_action"]:
+                self.RContextMenu.removeAction(action)
+                action.deleteLater()
+
+        request = self.current_browser.lastContextMenuRequest()
+
+        if request:
+
+            if request.linkUrl().isValid() and not request.linkUrl().isEmpty():
+                self.RContextMenu.addSeparator()
+
+                open_link = QAction("Open Link", self)
+                open_link.setObjectName("dynamic_web_action")
+                open_link.triggered.connect(lambda checked=False, req=request: self.load_url(QUrl(self.UrlManager.normalise_url(req.linkUrl().toString()))))
+                self.RContextMenu.addAction(open_link)
+
+                open_link_newtab = QAction("Open in New Tab", self)
+                open_link_newtab.setObjectName("dynamic_web_action")
+                open_link_newtab.triggered.connect(lambda checked=False, req=request: self.add_new_tab(qurl = QUrl(self.UrlManager.normalise_url(req.linkUrl().toString()))))
+                self.RContextMenu.addAction(open_link_newtab)
+
+                #I might need to make this more secure!
+                copy_link = QAction("Copy Link", self)
+                copy_link.setObjectName("dynamic_web_action")
+                copy_link.triggered.connect(lambda checked=False, req=request: QGuiApplication.clipboard().setText(req.linkUrl().toString()))
+                self.RContextMenu.addAction(copy_link)
+
+                copy_clean_link = QAction("Copy Cleaned Link", self)
+                copy_clean_link.setObjectName("dynamic_web_action")
+                copy_clean_link.triggered.connect(lambda  checked=False, req=request: QGuiApplication.clipboard().setText(self.UrlManager.normalise_url(req.linkUrl().toString())))
+                self.RContextMenu.addAction(copy_clean_link)
+
+
+            
+            if request.mediaUrl().isValid() and not request.mediaUrl().isEmpty():
+                self.RContextMenu.addSeparator()
+
+                open_img_newtab = QAction("Open Image in New Tab", self)
+                open_img_newtab.setObjectName("dynamic_web_action")
+                open_img_newtab.triggered.connect(lambda checked=False, req=request: self.add_new_tab(qurl = QUrl(self.UrlManager.normalise_url(req.mediaUrl().toString()))))
+                self.RContextMenu.addAction(open_img_newtab)
+
+                save_img = QAction("Save Image")
+                save_img.setObjectName("dynamic_web_action")
+                save_img.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.DownloadImageToDisk))
+                self.RContextMenu.addAction(save_img)
+
+                copy_img = QAction("Copy Image")
+                copy_img.setObjectName("dynamic_web_action")
+                copy_img.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.CopyImageToClipboard))
+                self.RContextMenu.addAction(copy_img)
+
+                copy_img_url = QAction("Copy Image Url")
+                copy_img_url.setObjectName("dynamic_web_action")
+                copy_img_url.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.CopyImageUrlToClipboard))
+                self.RContextMenu.addAction(copy_img_url)
+
+
+
+            if request.selectedText() and not request.isContentEditable():
+                self.RContextMenu.addSeparator()
+
+                copy_select = QAction("Copy", self)
+                copy_select.setObjectName("dynamic_web_action")
+                copy_select.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Copy))
+                self.RContextMenu.addAction(copy_select)
+
+                cut_select = QAction("Cut", self)
+                cut_select.setObjectName("dynamic_web_action")
+                cut_select.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Cut))
+                self.RContextMenu.addAction(cut_select)
+
+                paste_select = QAction("Paste", self)
+                paste_select.setObjectName("dynamic_web_action")
+                paste_select.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Paste))
+                self.RContextMenu.addAction(paste_select)
+
+                
+
+            if request.isContentEditable():
+                self.RContextMenu.addSeparator()
+
+                copy_select = QAction("Copy", self)
+                copy_select.setObjectName("dynamic_web_action")
+                copy_select.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Copy))
+                self.RContextMenu.addAction(copy_select)
+
+                cut_select = QAction("Cut", self)
+                cut_select.setObjectName("dynamic_web_action")
+                cut_select.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Cut))
+                self.RContextMenu.addAction(cut_select)
+
+                paste_select = QAction("Paste", self)
+                paste_select.setObjectName("dynamic_web_action")
+                paste_select.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Paste))
+                self.RContextMenu.addAction(paste_select)
+
+                self.RContextMenu.addSeparator()
+
+                undo_text = QAction("Undo", self)
+                undo_text.setObjectName("dynamic_web_action")
+                undo_text.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Undo))
+                self.RContextMenu.addAction(undo_text)
+
+                redo_text = QAction("Redo", self)
+                redo_text.setObjectName("dynamic_web_action")
+                redo_text.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.Redo))
+                self.RContextMenu.addAction(redo_text)
+
+            else:
+                pass
+
+
+
+        self.RContextMenu.addSeparator()
+
+        # add extras
+        inspect = QAction("DevTools", self)
+        inspect.setObjectName("dynamic_web_action")
+        inspect.triggered.connect(self.openDevTools)
+        self.RContextMenu.addAction(inspect)
+
+        select_all = QAction("Select All")
+        select_all.setObjectName("dynamic_web_action")
+        select_all.triggered.connect(lambda: self.current_browser.page().triggerAction(QWebEnginePage.WebAction.SelectAll))
+        self.RContextMenu.addAction(select_all)
+
+        self.RContextMenu.addSeparator()
+
+        # Apply the window transparency flags to the main menu
+        self.RContextMenu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.RContextMenu.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.RContextMenu.exec(self.current_browser.mapToGlobal(pos))
+
+
+    def openDevTools(self):
+        current_page = self.current_browser.page()
+        current_page.setDevToolsPage(self.devtools_page)
+        self.devtools_view.show()
 
 
     def UIHelper(self, buttonClicked):
@@ -1923,6 +2099,18 @@ class Browser(QMainWindow):
                 return
             
         super().wheelEvent(event)   
+
+    def devtoolsCloseEvent(self, event):
+        try:
+            page = self.current_browser.page()
+            # detach inspector backend
+            page.setDevToolsPage(None)
+
+        except Exception as e:
+            print(e)
+
+        event.accept()
+
 
 
 
@@ -1989,23 +2177,19 @@ class Browser(QMainWindow):
             qurl = qurl[0]
         
         browser = QWebEngineView()
+        browser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        browser.customContextMenuRequested.connect(lambda pos: self.displayWebContextMenu(pos))
 
-        internal = False
-        if qurl:
-            internal = (qurl.scheme().lower() == "midnightwatch" and qurl.host().lower() == "local")
-        if internal:
-            new_page = InternalPage(self.profile, browser)
 
-            #instantiate object communication bridge for internal page
-            bridge = objectMasterBridge(self, new_page)
-            bridge.searchRequested.connect(self.htmlSearch)
-            channel = QWebChannel(new_page)
-            channel.registerObject("pyBridge", bridge)
-            new_page.setWebChannel(channel)
-            new_page.bridge = bridge
-            new_page.channel = channel
-        else:
-            new_page = BrowserPage(self.profile, browser)
+        new_page = InternalPage(self.profile, browser)
+        #instantiate object communication bridge for internal page
+        bridge = objectMasterBridge(self, new_page)
+        bridge.searchRequested.connect(self.htmlSearch)
+        channel = QWebChannel(new_page)
+        channel.registerObject("pyBridge", bridge)
+        new_page.setWebChannel(channel)
+        new_page.bridge = bridge
+        new_page.channel = channel
 
         browser.setPage(new_page)
         browser.setUrl(qurl)
@@ -2579,18 +2763,19 @@ class Browser(QMainWindow):
         """)
 
         #Style menu appearance
+        bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
         for element in [self.RContextMenu, self.Bookmark_menu]:
             element.setStyleSheet(f"""
                 QMenu {{
-                    background-color: rgb({', '.join(str(255 - int(c) + (55 if avgnew < 150 else -55)) for c in text_rgb_str.replace('rgb(', '').replace(')', '').split(','))});
-                    border: 4px solid {self.hexval};
+                    background-color: {bg_rgb_str};
+                    border: 4px solid rgb({', '.join(str(int(c) + (55 if avgnew < 150 else -55)) for c in bg_rgb_str.replace('rgb(', '').replace(')', '').split(','))});
                     border-radius: 8px;
                     padding: 4px;
                 }}
                 QMenu::item {{
                     background-color: transparent;
                     padding: 6px 24px;
-                    color: {self.select_RGB_SL}
+                    color: {"white" if avgnew < 150 else "black"};
                     border-radius: 4px;
                 }}
                 /* Hover state display */

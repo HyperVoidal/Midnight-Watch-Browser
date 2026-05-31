@@ -14,80 +14,6 @@ srcSourceDir = Path(__file__).parent
 BASE_DIR = (Path(srcSourceDir)/"ui").resolve()
 
 
-#individual class management to isolate normal content pages from internal pages
-class BrowserPage(QWebEnginePage):
-
-    def __init__(self, profile, browser, parent=None):
-        super().__init__(profile, parent)
-        self.additionalUIElements = additionalUIElements(self)
-        self.browser = browser
-        self.featurePermissionRequested.connect(self.handle_permission)
-
-    def handle_permission(self, origin, feature):
-        names = {
-
-            QWebEnginePage.Feature.Geolocation:
-                "Location",
-
-            QWebEnginePage.Feature.Notifications:
-                "Notifications",
-
-            QWebEnginePage.Feature.MediaAudioCapture:
-                "Microphone",
-
-            QWebEnginePage.Feature.MediaVideoCapture:
-                "Camera",
-
-            QWebEnginePage.Feature.MediaAudioVideoCapture:
-                "Camera + Microphone"
-        }
-
-        label = names.get(feature, str(feature))
-
-        allow = self.additionalUIElements.WindowConfirmation(label, f"{origin.toString()} requests {label}.")
-        
-        if allow:
-            policy = QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
-        else:
-            policy = QWebEnginePage.PermissionPolicy.PermissionDeniedByUser
-
-        self.setFeaturePermission(origin, feature,policy)
-
-    def acceptNavigationRequest(self, url, nav_type, is_mainframe):
-
-        # Don't inspect subresource loads
-        if not is_mainframe:
-            return True
-
-        # Suspicious schemes
-        dangerous = {
-            "file",
-            "javascript",
-            "data"
-        }
-
-        scheme = url.scheme().lower()
-
-        if scheme in dangerous:
-            return self.additionalUIElements.WindowConfirmation("Dangerous Navigation", f"Allow navigation to:\n{url.toString()} ?")
-        
-        # Allow normal user clicks
-        if nav_type == (QWebEnginePage.NavigationType.NavigationTypeLinkClicked):
-            return True
-
-        return True
-
-    def createWindow(self, window_type):
-        if not self.additionalUIElements.WindowConfirmation("Popup Request", "Allow popup window?"):
-            return None
-
-        browser = self.parent()
-
-        if hasattr(browser,"add_new_tab"):
-            new_tab = self.browser.add_new_tab(QUrl("about:blank"), "Popup")
-            return new_tab.page()
-        return None
-
 class InternalPage(QWebEnginePage):
 
     def __init__(self, profile, browser, parent=None):
@@ -121,6 +47,10 @@ class InternalPage(QWebEnginePage):
         # Handle Redirects
         if nav_type == QWebEnginePage.NavigationType.NavigationTypeRedirect:
             if url.scheme() == "midnightwatch":
+                return True
+            
+            # user intentionally left internal space
+            if self.requestedUrl().scheme() in ("http", "https"):
                 return True
 
             # allow same-origin redirects
@@ -318,7 +248,7 @@ class ScriptletBlocker:
 
 class EVAdInterceptor():
     @staticmethod
-    def deployPayload(browser, profile, injectionData): #function for blocking ads in embedded in videos   
+    def deployPayload(browser, profile): #function for blocking ads in embedded in videos   
         try:
             with open(f"{srcSourceDir}/Javascript_Executables/embeddedadblocker.js", 'r', encoding='utf-8') as f:
                 js_code = f.read()
@@ -344,25 +274,11 @@ class EVAdInterceptor():
         ytbScript.setSourceCode(ytb_txt)
         ytbScript.setName("Youtube_Script_Blocker")
         ytbScript.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        ytbScript.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+        ytbScript.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         ytbScript.setRunsOnSubFrames(True)
-
-
-        try:
-            with open(f"{srcSourceDir}/Javascript_Executables/antiFingerprinting.js", 'r', encoding='utf-8') as f:
-                af_txt = f.read()
-        except IOError as e:
-            print(f"Error reading anti-fingerprinting javascript file")
-        afScript = QWebEngineScript()
-        afScript.setSourceCode(af_txt)
-        afScript.setName("anti-fingerprinting")
-        afScript.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        afScript.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
-        afScript.setRunsOnSubFrames(True)
 
         #Add to the page's script collection
         #browser.page().scripts().clear()
         #profile.scripts?
         profile.scripts().insert(script)
         profile.scripts().insert(ytbScript)
-        profile.scripts().insert(afScript)
