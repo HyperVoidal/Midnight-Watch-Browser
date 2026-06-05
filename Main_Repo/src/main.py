@@ -26,6 +26,7 @@ import shutil
 import plyer
 from plyer import notification
 import random
+from shiboken6 import isValid
 from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
@@ -57,21 +58,6 @@ def get_normIcon(name):
     icon_path = icon_cache_dir / f"{name}"
 
     return QIcon(str(icon_path))
-
-
-with open (f"{srcSourceDir}/data/engineData.json", "r") as f:
-    engineData = dict(json.load(f))
-
-#Secondary dictionary to continue compat with current functions
-engines = {}
-engine = ""
-for key, value in engineData.items():
-    engines[key] = value["URL"]
-    if value["active"] == True:
-        engine = key
-
-#print("ENGINES LIST FROM JSON: ", engines)
-print("Startup Selected Engine: ", engine)
 
 #Variable initialisation
 global eColsButton, eColsStyle
@@ -180,6 +166,10 @@ def settingsActivate(toggles):
     if "Cookie-Prediction-Sensitivity" in toggles.keys():
         global sensitivity
         sensitivity = toggles["Cookie-Prediction-Sensitivity"] #0 for limited blocking, 1 for middle ground, 2 for extensive, 3 for block everything with no limits. Anything past 1 may break persistent data
+    
+    if "Cookie-Auto-Handler" in toggles.keys():
+        global cookieAutoHandler
+        cookieAutoHandler = toggles["Cookie-Auto-Handler"]
 
     if "Cookie-Accept/Deny-On-Leave" in toggles.keys():
         global siteLeaveCookies
@@ -386,11 +376,16 @@ class objectMasterBridge(QObject):
                 settingsData["Blur"] = round(int(dataValue) / 25)
             
             if dataHeader == "cookieFilterSens":
-                settingsData["Cookie-Prediction-Sensitivity"] = int(dataValue)
-                #update filter sentivity
                 new_level = int(dataValue)
                 settingsData["Cookie-Prediction-Sensitivity"] = new_level
                 self.browser.cookieManager.updateSensitivity(new_level)
+
+            if dataHeader == "cookieAutoHandler":
+                settingsData["Cookie-Auto-Handler"] = (str(dataValue).lower() == "true")
+                self.browser.cookieManager.updateHandler(int(dataValue))
+
+            if dataHeader == "cookieMassDelete":
+                self.browser.cookieMassDelete()
 
             if dataHeader == "DNSoverHTTPS": 
                 settingsData["DNS-over-HTTPS"] = str(dataValue)
@@ -398,7 +393,7 @@ class objectMasterBridge(QObject):
                 #Trigger informational changes
                 updateDoHSettings(str(dataValue), settingsData)
 
-            if dataHeader == "TabCloseCookieAction": 
+            if dataHeader == "TabCloseAction": 
                 settingsData["Cookie-Accept/Deny-On-Leave"] = (str(dataValue).lower() == "true")
             
             if dataHeader == "SaveTabsOnReload":
@@ -626,6 +621,9 @@ class objectMasterBridge(QObject):
         
         elif key == "cookieSens":
             return str(settingsData["Cookie-Prediction-Sensitivity"])
+        
+        elif key == "cookieAutoHandler":
+            return str(settingsData["Cookie-Auto-Handler"])
         
         elif key == "DNSoHTTPS":
             return str(settingsData["DNS-over-HTTPS"])
@@ -1091,7 +1089,7 @@ class profileSelectUI(QDialog):
         #source ID as next value
         id = int((next(reversed(self.profileData.keys())))[2:]) + 1 if self.profileData else 0
         #source data for new profile from the default profile - grab from default or otherwise just add default values
-        stored_data = self.profileData["id0"]["stored_data"] if "id0" in self.profileData else {"DNS-over-HTTPS": "AdGuard","Cookie-Prediction-Sensitivity": 0,"Cookie-Accept/Deny-On-Leave": 0,"Save-Tabs-On-Restart": 0,"Tab-Position": "North","Top-Stack": ["nav_bar","bookmarks_bar"],"Bottom-Stack": ["status_bar"],"Hidden-Stack": [],"Date-Display": ["dddd, d MMMM",1],"Time-Display": "hh:mm AP","Name": "Default","Greeting": 1,"Blur": 10,"Image-Url": "MainImageBackground.png","Colour-Theme": "Secured Blue","Utilise-QUIC-Browsing": 1,"DeGoogler": 0}
+        stored_data = self.profileData["id0"]["stored_data"] if "id0" in self.profileData else {"DNS-over-HTTPS": "AdGuard","Cookie-Prediction-Sensitivity": 0,"Cookie-Accept/Deny-On-Leave": 0,"Save-Tabs-On-Restart": 0,"Tab-Position": "North","Top-Stack": ["nav_bar","bookmarks_bar"],"Bottom-Stack": ["status_bar"],"Hidden-Stack": [],"Date-Display": ["dddd, d MMMM",1],"Time-Display": "hh:mm AP","Name": "Default","Greeting": 1,"Blur": 10,"Image-Url": "MainImageBackground.png","Colour-Theme": "Secured Blue","Utilise-QUIC-Browsing": 1,"DeGoogler": 0, "Dns-Fallback": 1, "GPU-Safe-System": 0, "Cookie-Auto-Handler": 1}
            
         self.profileData[f"id{id}"] = {
             "Name": "Add New Profile",
@@ -1206,6 +1204,7 @@ class Browser(QMainWindow):
         global eColsStyle
         global eColsButton
         global sensitivity
+        global cookieAutoHandler
 
         #update main loader json file with the info selected from the profile
         profileData = profile_config["stored_data"]
@@ -1297,9 +1296,8 @@ class Browser(QMainWindow):
         
 
         #Initialise cookie jar (Cookie management)
-        self.cookieManager = CookieManager(self.profile, sensitivity)
+        self.cookieManager = CookieManager(self.profile, sensitivity, cookieAutoHandler)
         self.cookie_store = self.profile.cookieStore()
-        self.cookie_store.deleteAllCookies()
         self.cookie_store.loadAllCookies() 
         self.cookie_store.cookieAdded.connect(self.on_cookie_received)
         self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
@@ -1377,9 +1375,22 @@ class Browser(QMainWindow):
 
 
         #engine system
+        with open (f"{srcSourceDir}/data/engineData.json", "r") as f:
+            engineData = dict(json.load(f))
+
+        self.engines = {}
+        engine = ""
+        for key, value in engineData.items():
+            self.engines[key] = value
+            if value["active"] == 1:
+                engine = key
+
+        #print("ENGINES LIST FROM JSON: ", engines)
+        print("Startup Selected Engine: ", engine)
+
         self.engine = engine
         self.engine_btn = None
-        self.engine_btn, self.browserMenu = self.barManager.setup_engine_button(engines)
+        self.engine_btn, self.browserMenu = self.barManager.setup_engine_button(self.engines)
         self.current_browser.urlChanged.connect((lambda qurl, browser=self.current_browser: self.on_url_changed(qurl, browser)))
 
 
@@ -1502,6 +1513,9 @@ class Browser(QMainWindow):
 
         #New Expandable Repetition Button system for help display
         self.buttonInternals = {
+            #Main homescreen for pressing the help button
+            "General": [None, "General", "help", 1],
+            #Past this point are the internally defined clickable buttons
             "Back Help": [self.back_btn, "Back", "back", 1],
             "Forward Help": [self.forward_btn, "Forward", "forward", 1],
             "Settings Help": [self.settings_btn, "Settings", "settings", 1],
@@ -1511,12 +1525,15 @@ class Browser(QMainWindow):
             "Colour Palettes Help": [self.colourpalette_btn, "Colour Palettes", "colourpalette", 1],
             "Search Engines Help": [self.engine_btn, "Engines", "tabIcon", 1],
             "Cookies Help": [self.cookie_btn, "Cookies", "cookie", 1],
+            #Past this point are non internally-defined clickable areas, their controls are in ui_core
             "Tabs Help": [None, "Tabs", "tabIcon", 0],
             "Bookmarks Help": [None, "Bookmarks", "BookmarkNotAdded", 0],
             "UrlBar Help": [None, "Url Bar", "urlbar", 0],
             "Zooming Help": [None, "Zooming", "magnify", 0],
             "Profiles Help": [None, "Profiles", "profile", 0],
-            "StatusBar Help": [None, "Status Bar", "statusbar", 0]
+            "StatusBar Help": [None, "Status Bar", "statusbar", 0],
+            #Past this point is non-clickable areas that appear at the bottom of the help index
+            "Keybinds Help": [None, "Keybinds", "keybinds", 0]
         }
 
         #Run all browser startup triggers such as loading tabs from previous sessions.
@@ -1596,6 +1613,13 @@ class Browser(QMainWindow):
             QProcess.startDetached(sys.executable, sys.argv)
 
         QApplication.quit()
+
+    def handleNewWindow(self, request):
+        print("NEW WINDOW REQUEST")
+        print(request.requestedUrl())
+
+        new_tab = self.browser.add_new_tab()
+        request.openIn(new_tab.page())
 
     #profile menu reloader system
     def open_profile_menu(self):
@@ -2044,6 +2068,33 @@ class Browser(QMainWindow):
 
         self.RContextMenu.exec(self.current_browser.mapToGlobal(pos))
 
+    def displayEngineContextMenu(self, pos, trigger_widget, key):
+        for action in reversed(self.RContextMenu.actions()):
+            if action.objectName() in ["dynamic_help_action", 
+                                        "dynamic_bookmark_action", 
+                                        "dynamic_tab_action", 
+                                        "dynamic_url_action", 
+                                        "dynamic_status_action",
+                                        "dynamic_web_action"]:
+                self.RContextMenu.removeAction(action)
+                action.deleteLater()
+
+        deleteEngine = QAction("Delete Engine", self)
+        deleteEngine.setObjectName("dynamic_help_action")
+        deleteEngine.triggered.connect(lambda checked=False, k=key: self.deleteEngineEntry(k))
+        self.RContextMenu.addAction(deleteEngine)
+        
+        self.RContextMenu.addSeparator()
+
+        self.RContextMenu.setWindowFlags(self.RContextMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.RContextMenu.setAttribute(Qt.WA_TranslucentBackground)
+
+        # Temporarily force the active dropdown menu to be the structural parent of the context menu, fix for wayland mechanics on Linux
+        if hasattr(self.barManager, 'browserMenu') and self.barManager.browserMenu:
+            self.RContextMenu.setParent(self.barManager.browserMenu, self.RContextMenu.windowFlags())
+
+        self.RContextMenu.exec(trigger_widget.mapToGlobal(pos))
+
 
     def openDevTools(self):
         current_page = self.current_browser.page()
@@ -2191,7 +2242,7 @@ class Browser(QMainWindow):
         browser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         browser.customContextMenuRequested.connect(lambda pos: self.displayWebContextMenu(pos))
 
-        new_page = InternalPage(self.profile, browser)
+        new_page = InternalPage(self.profile, browser, self)
 
         browser.setPage(new_page)
 
@@ -2259,7 +2310,9 @@ class Browser(QMainWindow):
                 target_url = target_tab.url().toString()
                 if self.cookiedict is not None:
                     for key, data in list(self.cookiedict.items()):
-                        if data["domain"] in target_url:
+                        cookie_domain = data["domain"].lstrip(".")
+                        tab_host = QUrl(target_url).host()
+                        if tab_host.endswith(cookie_domain):
                             if siteLeaveCookies:
                                 self.cookieManager.acceptCookie(key)
                             else:
@@ -2396,7 +2449,7 @@ class Browser(QMainWindow):
             self.current_browser.setUrl(url)
         else:
             # It's a search query
-            search_url = engines[engine] + input_text.replace(" ", "+")
+            search_url = self.engines[engine]["URL"] + input_text.replace(" ", "+")
             self.current_browser.setUrl(QUrl(search_url))
 
         #update url bar to proper cleaned url text
@@ -2406,7 +2459,7 @@ class Browser(QMainWindow):
 
     def htmlSearch(self, cQuery):
         #convert to search link
-        search_url = engines[engine] + cQuery.replace(" ", "+")
+        search_url = self.engines[engine]["URL"] + cQuery.replace(" ", "+")
         #update and process system
         self.current_browser.setUrl(QUrl(UrlManager.normalise_url(True, search_url)))
         #update url bar to proper cleaned url text
@@ -2508,7 +2561,7 @@ class Browser(QMainWindow):
     def _url_bar_mouse_press(self, event):
         if not self.url_bar.hasFocus():
             self.url_bar.selectAll()
-        super(QLineEdit, self.url_bar).mousePressEvent(event)
+        QLineEdit.mousePressEvent(self.url_bar, event)
     
     def _url_bar_focus_in(self, event):
         # Only clear if it's an internal page (your scheme)
@@ -2534,14 +2587,111 @@ class Browser(QMainWindow):
             self.engine_btn.setIcon(QIcon(str(icon_cache_dir / f"{key}")))
             
             #reformat json file to show active browser as 'true'. Swapping browsers lets the selected one persist after resets
-            with open(f"{srcSourceDir}/data/engineData.json", "r") as f:
-                engineData = dict(json.load(f))
-            for key, value in engineData.items():
-                if engineData[key]["active"] == True:
-                    engineData[key]["active"] = False
-            engineData[self.engine]["active"] = True
+            for key, value in self.engines.items():
+                if self.engines[key]["active"] == 1:
+                    self.engines[key]["active"] = 0
+            self.engines[self.engine]["active"] = 1
             with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
-                json.dump(engineData, f, indent=4)
+                json.dump(self.engines, f, indent=4)
+    
+    def add_new_engine(self):
+        name, url = self.additionalUIElements.WindowDoubleInput(
+            "Add New Engine",
+            "Enter the display name (e.g. Brave, Google)",
+            "Display Name",
+            "Enter the search URL (e.g. https://www.google.com/search?q=)",
+            "Search URL"
+        )
+        if not url:
+            return
+        if not name:
+            name = "Unnamed Engine"
+
+        self.engines[str(name)] = {"URL": url, "active": 0}
+
+
+        #Update engines data backend
+        self.barManager.update_engine_menu(self.engines)
+
+        self.browserMenu = self.barManager.browserMenu
+
+        #Save modified data
+        with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
+                json.dump(self.engines, f, indent=4)
+
+        #update colour theme
+        with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+            Colourdata = dict(json.load(f))
+        self.SelectColourTheme(self.profile_config["stored_data"]["Colour-Theme"], Colourdata)
+
+    def deleteEngineEntry(self, engineName):
+        print(str(engineName))
+
+        if self.engine == str(engineName):
+            iterator = iter(self.engines)
+            first_key = next(iterator, None)
+
+            if first_key != str(engineName):
+                # First item is not the one being deleted, use it
+                self.set_engine(first_key)
+            else:
+                # First item is the one being deleted, try to get the second
+                second_key = next(iterator, None)
+                if second_key is not None:
+                    self.set_engine(second_key)
+                else:
+                    # Handle case where no other engines are available
+                    QMessageBox.warning(None, "Engine Deletion", "Cannot delete engine, only one is present in the list! \n\n Please ensure at least one engine is present in your list at all times.")
+                    return
+
+
+        #Remove engines entry
+        target_key = next((k for k in self.engines if k.lower() == str(engineName).lower()), None)
+
+        if target_key:
+            del self.engines[target_key]
+        else:
+            QMessageBox.warning(
+                None, 
+                "Engine Deletion", 
+                "Attempted to delete an engine that doesn't exist in data. Please refresh the dropdown or reload the entire browser and try again."
+            )
+            return
+            
+        #Close UI for refreshing
+        if hasattr(self.barManager, 'browserMenu'):
+            self.barManager.browserMenu.close()
+        
+        #Update menu
+        self.barManager.update_engine_menu(self.engines)
+
+        self.browserMenu = self.barManager.browserMenu
+
+
+        #Save data
+        with open(f"{srcSourceDir}/data/engineData.json", "w") as f:
+                json.dump(self.engines, f, indent=4)
+        
+        #Remove icon for deleted engine
+        icon_path = f"{srcSourceDir}/ui/icon_cache/{str(engineName)}.png"
+        if os.path.exists(icon_path):
+            try:
+                os.remove(icon_path)
+            except Exception as e:
+                print(f"Could not remove cached image file: {e}")
+        else:
+            print("No image to remove")
+
+        #update colour theme
+        with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
+            Colourdata = dict(json.load(f))
+        self.SelectColourTheme(self.profile_config["stored_data"]["Colour-Theme"], Colourdata)
+        
+        
+
+
+        
+
 
 
     '''Bookmarks System'''
@@ -2803,6 +2953,9 @@ class Browser(QMainWindow):
         #Style menu appearance
         bg_rgb_str = f"rgb({rgb_vals[0]}, {rgb_vals[1]}, {rgb_vals[2]})"
         for element in [self.RContextMenu, self.Bookmark_menu]:
+            if element is None or not isValid(element):
+                continue
+
             element.setStyleSheet(f"""
                 QMenu {{
                     background-color: {bg_rgb_str};
@@ -2870,14 +3023,14 @@ class Browser(QMainWindow):
                 if label:
                     label.setStyleSheet(f"color: {self.hexval}") #needs a contrastive colour
 
-            #needs to happen again for engine menu, maybe this needs reworking??
-            #can't seem to find the engine labels?
+
             # Apply styling to the browsermenu (Engine Selector)
             for action in self.browserMenu.actions():
                 widget = action.defaultWidget()
                 if widget:
                     # Get the engine name from the action data (e.g., 'google')
-                    engine_key = action.data()[0] 
+                    act_data = action.data()
+                    engine_key = act_data[0] if (isinstance(act_data, tuple) or isinstance(act_data, list)) else "new_engine"
 
                     # Find the text label using its unique object name
                     # findChild(Class, name) is safer than findChild(Class)
@@ -2923,7 +3076,7 @@ class Browser(QMainWindow):
         domain = cookie.domain()
         value = cookie.value().data().decode()
         #actual logic - refresh cookie dictionary each time a new one is added
-        self.cookiedict = self.cookieManager.on_cookie_added(cookie)
+        self.cookiedict = self.cookieManager.on_cookie_added(cookie, self.current_browser.url().host())
 
 
     def cookieGUI(self):
@@ -2947,6 +3100,10 @@ class Browser(QMainWindow):
         self.cookieManager.refresh_cookie_list()
         self.cookieMenu.adjustSize()
         self.cookieGUI() 
+    
+    def cookieMassDelete(self):
+        self.cookie_store.deleteAllCookies()
+
 
 
     

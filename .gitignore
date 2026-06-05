@@ -38,3 +38,6 @@ ext_cache/
 
 # Ignore new browser cache files
 Browser_Data/
+
+# Ignore output files from autopytoexe converter
+output/

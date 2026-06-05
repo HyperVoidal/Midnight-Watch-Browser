@@ -10,7 +10,7 @@
 
             /* Important text for question box display */
             --text-save-tabs: "This feature automatically reopens your last session tabs upon restarting the browser. <break2> This is determined by the last window of the browser you opened. <break3> Note that native html pages such as the homepage and settings menu are exempt from the loader.";
-            --text-name-display: "Sets your internally recognised name. This works primarily wiht the greeting display. <break2> Press enter to confirm.";
+            --text-name-display: "Sets your internally recognised name. This works primarily with the greeting display. <break2> Press enter to confirm.";
             --text-display-greeting: "Displays a greeting on the home page screen based on the time of day and your set name.";
             --text-simple-date-display: "Dropdown to determine what date formatting is displayed on the homepage. <break2> Options (with examples) are: <break1> - Global (e.g. 15/01/26) <break1> - US (e.g. 01/15/26) <break1> - ISO (e.g. 26-01-15) <break1> - Long Form (e.g. Thursday, January 15, 2026) <break1> - Minimalist (e.g. 15 Jan 2026) <break2> Note that years are only shown if the option below is enabled.";
             --text-display-year: "Appends a year item to the end of whatever date format you select. <break2> Designed primarily for dropdown options but is theoretically compatible with advanced date formatting.";
@@ -27,6 +27,8 @@
             --text-TabClose-CookieAction: "When disabled, closing a tab will set the browser to automatically delete all cookies remaining in the queue. <break2> When enabled, closing a tab will set the browser to automatically save all remaining cookies in the queue. <break2> We recommend keeping this disabled.";
             --text-DeGoogler: "Enables all degoogler systems for the browser in an attempt to strip out all non-essential processing and remove telemetry data sending. <break2> Note this will have the side effect of disabling some useful features too, including the inbuilt phishing website alerts in default chromium. This setting is recommended only for people who really know their way around the internet. Enable at your own risk. <break2> This setting requires a restart to take effect.";
             --text-GPUSafeSystem: "This setting disables hardware acceleration for video decoding, which can improve stability on some systems with older or less compatible graphics hardware at the cost of increased CPU usage during video playback. <break2> Enable this if you experience frequent crashes, flickering screens, rendering failures, or freezes during video playback, especially on older computers. <break2> This setting requires a restart to take effect.";
+            --text-cookieAutoHandler: "In the event that you'd rather leave all the cookie handling up to the browser, this system enables an automatic handler that adds cookies to your system that aren't flagged by the filters. <break2> Very simply, if it would appear in the selector UI, the browser adds it just in case. <break2> It is recommended that you use a higher degree of security for filters if this system is enabled (level 2 or above), as some tracking cookies may still slip through.";
+            --text-cookieMassDelete: "Press this button to erase every cookie present in the browser's storage. <break2> Note! This will remove ALL cookies, including pre-saved logins, site information, and everything every website remembers about you automatically until you sign in again! <break2> Use with caution!"
             }
         
         html, body {
@@ -598,6 +600,23 @@
 
         .button:hover {
             background: #504e4e;
+        }
+
+        .triggerButton {
+            display: inline-block;
+            padding: 10px;
+            background: #3f81ff;
+            cursor: pointer;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            color: white;
+            font-family: sans-serif;
+            font-weight: 800;
+            font-size: 15px;
+        }
+
+        .triggerButton:hover {
+            background: #5c95ff;
         }
 
         #fileElem {
@@ -1429,8 +1448,32 @@
                         </div>
                     </div>
                     <div class="text-spacer"></div>
+                    <div class="text-spacer"></div>
+                    <div class="control-row">
+                        <div class="input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id ="cookieAutoHandler" checked>
+                                <span class="checkmark"></span>
+                                Automatic Cookie Handling
+                                <a href="#" class="question-box" onclick="showInfo('Automatic Cookie Handling', 'cookieAutoHandler')">?</a>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="text-spacer"></div>
                     <hr class="separator-left">
                     <div class="text-spacer"></div>
+                    <div class="control-row">
+                        <div class="input-group">
+                            <button type="button" class="triggerButton" id="cookieMassDelete">
+                                Delete All Cookies
+                            </button>
+                            <a href="#" class="question-box" onclick="showInfo('Mass-Cookie Deletion', 'cookieMassDelete')">?</a>
+                        </div>
+                    </div>
+                    <div class="text-spacer"></div>
+                    <hr class="separator-left">
+                    <div class="text-spacer"></div>
+                    
                 </div>
 
             </main>
@@ -1872,10 +1915,16 @@
                     } else if (component.type === "checkbox" || component.classList.contains("checkmark")) {
                         bridge_name.receiveData([String(data_ID), component.checked]);
                         dataSend(component);
-                    }
+                    } 
                     
                 })
                 
+                if (component.type === "button") {
+                    component.addEventListener('click', () => {
+                        bridge_name.receiveData([String(data_ID), true]);
+                    });
+                }
+
                 //input text sanitiser for text entry boxes
                 if (component.type === "text" || component.classList.contains("custom-input")) {
                     component.addEventListener('input', (e) => {
@@ -2029,6 +2078,10 @@
 
             dataUploadLink(window.bridge, "GPUSafeSystem") // GPU Safe System Send
 
+            dataUploadLink(window.bridge, "cookieAutoHandler") //Cookie Auto Handler Send
+
+            dataUploadLink(window.bridge, "cookieMassDelete")
+
             //Tab Bar Position Sender and Date Input Sender in a shared dropdown click interpreter function called selectOption
             //Stack Order Controller Sender is linked to the movement trigger in the drop function
             
@@ -2064,6 +2117,8 @@
                dataDownloadLink(window.bridge, "DnsFallback", "DnsFallback") //DNS Fallback Receive
 
                dataDownloadLink(window.bridge, "GPUSafeSystem", "GPUSafeSystem") //GPU Safe System Receive
+
+               dataDownloadLink(window.bridge, "cookieAutoHandler", "cookieAutoHandler") //Cookie Auto Handler Receive
             
             };
 

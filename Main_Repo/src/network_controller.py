@@ -1,6 +1,13 @@
-from PySide6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEngineScript, QWebEngineUrlRequestJob, QWebEnginePage
-from PySide6.QtCore import QUrl, QUrlQuery, QUrlQuery, QBuffer, QIODevice, QByteArray, QFile
-from PySide6.QtWebEngineCore import QWebEngineUrlScheme, QWebEngineUrlSchemeHandler, QWebEngineUrlRequestJob
+import PySide6
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
+from PySide6.QtWebEngineWidgets import *
+from PySide6.QtWebEngineCore import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtNetwork import *
+from PySide6.QtWebEngineCore import *
+from PySide6.QtWebChannel import *
 from pathlib import Path
 import os
 import json
@@ -20,8 +27,35 @@ class InternalPage(QWebEnginePage):
         super().__init__(profile, parent)
         self.additionalUIElements = additionalUIElements(self)
         self.browser = browser
+        self.parent = parent
 
+        #Create window popup system
+        #self.newWindowRequested.connect(self.parent.handleNewWindow)
+
+    def createWindow(self, webWindowType):
+        try:
+            req_url = self.requestedUrl()
+        except Exception:
+            req_url = None
+
+        if self.parent and hasattr(self.parent, "add_new_tab"):
+            if req_url and not req_url.isEmpty():
+                new_view = self.parent.add_new_tab(qurl=req_url)
+            else:
+                new_view = self.parent.add_new_tab()
+            return new_view.page()
+
+        # Fallback: standalone popup window
+        new_view = QWebEngineView()
+        new_page = InternalPage(self.profile() if callable(getattr(self, "profile", None)) else self.profile, new_view)
+        new_view.setPage(new_page)
+        new_view.setAttribute(Qt.WA_DeleteOnClose)
+        new_view.resize(1200, 800)
+        new_view.show()
+        return new_page
+    
     def acceptNavigationRequest(self, url, nav_type, is_mainframe):
+        print("NAV REQUEST: " + str(url))
 
         if not is_mainframe:
             return True
@@ -38,7 +72,8 @@ class InternalPage(QWebEnginePage):
             QWebEnginePage.NavigationType.NavigationTypeOther,
             QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
             QWebEnginePage.NavigationType.NavigationTypeBackForward,
-            QWebEnginePage.NavigationType.NavigationTypeReload
+            QWebEnginePage.NavigationType.NavigationTypeReload,
+            QWebEnginePage.NavigationType.NavigationTypeFormSubmitted
         }
         
         if nav_type in allowed:
@@ -127,6 +162,8 @@ class UrlManager():
     def __init__(self):
         pass
 
+    def normalise_url_storage(navlink: bool, url_input: str):
+        pass
 
     def normalise_url(navlink: bool, url_input: str):
         qurl = QUrl.fromUserInput(url_input)
@@ -151,19 +188,75 @@ class UrlManager():
         clean_query = QUrlQuery()
 
         for key, value in query.queryItems():
-            # Skip unwanted params
-            if (
-                key.startswith("utm_") or
-                key == "si" or
-                key == "sei" or
-                key in ("fbclid", "gclid") or
-                key in ("sg_ss", "ved", "ei", "source", "gs_lcrp", "sca_esv", "iflsig", "uact", "oq", "aqs")
-            ):
-                continue
+            #Parameter list
+            Tracking_Parameters = [
+                "utm_",
+                "si",
+                "sei",
+                "fbclid",
+                "gclid",
+                "sg_ss",
+                "ved",
+                "ei",
+                "source",
+                "gs_lcrp",
+                "sca_esv",
+                "iflsig",
+                "uact",
+                "oq",
+                "aqs",
+                "mc",
+                "mc_eid",
+                "mc_cid",
+                "mkt_tok",
+                "yclid",
+                "dclid",
+                "gbraid",
+                "wbraid",
+                "msclkid",
+                "ttclid",
+                "twclid",
+                "igshid",
+                "ref_src",
+                "ref_url",
+                "s_cid",
+                "vero_id",
+                "oly_anon_id",
+                "oly_enc_id",
+                "_pk_id",
+                "_pk_ses",
+                "rb_clickid",
+                "wickedid",
+                "cmpid",
+                "campid",
+                "__hsfp",
+                "__hssc",
+                "_s",
+                "_hsenc",
+                "_openstat",
+                "hsCtaTracking",
+                "ml_subscriber",
+                "ml_subscriber_hash",
+                ""
+            ]
 
-            # Only add once
-            clean_query.addQueryItem(key, value)
-        
+            seen = set()
+
+            for key, value in query.queryItems():
+                
+                #only add parts to filter if they're in the filter lists
+                if (key.startswith("utm_") or key in Tracking_Parameters):
+                    continue
+
+                pair = (key, value)
+
+                if pair in seen:
+                    continue
+
+                seen.add(pair)
+
+                clean_query.addQueryItem(key, value)
+
         qurl.setQuery(clean_query)
 
         if not navlink: #only run this when not sanitising navigation links. Bookmarks need agressive normalisation but doing so for navlinks might break some sites
@@ -179,6 +272,8 @@ class UrlManager():
                 path = "/"
 
             qurl.setPath(path)
+
+            qurl.setFragment("")
         
         return qurl.toString()
     

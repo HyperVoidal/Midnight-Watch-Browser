@@ -1,18 +1,22 @@
 {
     "ecosia": {
         "URL": "https://www.ecosia.org/search?q=",
-        "active": false
+        "active": 0
     },
     "google": {
         "URL": "https://www.google.com/search?q=",
-        "active": false
+        "active": 1
     },
     "brave": {
         "URL": "https://search.brave.com/search?q=",
-        "active": true
+        "active": 0
     },
     "duckduckgo": {
         "URL": "https://duckduckgo.com/search?q=",
-        "active": false
+        "active": 0
+    },
+    "Startpage": {
+        "URL": "https://www.startpage.com/sp/search?query=",
+        "active": 0
     }
 }

@@ -1,6 +1,6 @@
 {
     "DNS-over-HTTPS": "Cloudflare Secure",
-    "Cookie-Prediction-Sensitivity": 0,
+    "Cookie-Prediction-Sensitivity": 1,
     "Cookie-Accept/Deny-On-Leave": false,
     "Save-Tabs-On-Restart": false,
     "Tab-Position": "North",
@@ -25,5 +25,6 @@
     "Utilise-QUIC-Browsing": true,
     "DeGoogler": false,
     "Dns-Fallback": true,
-    "GPU-Safe-System": true
+    "GPU-Safe-System": true,
+    "Cookie-Auto-Handler": true
 }

@@ -1,18 +1,24 @@
 from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineCookieStore
+from PySide6.QtCore import QDateTime
 
 
 class CookieManager:    
-    def __init__(self, profile, sensitivity):
+    def __init__(self, profile, sensitivity, cookieAutoHandler):
         self.store = profile.cookieStore()
         #Storing latest versions of unique cookies for reference
         self.pending_cookies = {}
         self.Sensitivity = sensitivity #determines how defensive/sensitive the cookie prediction system is
+        self.cookieAutoHandler = cookieAutoHandler
         # Start the filter immediately
         self.setup_filter()
     
     def updateSensitivity(self, newSensitivity):
         self.Sensitivity = int(newSensitivity)
         print(f"Cookie sensitivity updated to: {self.Sensitivity}")
+    
+    def updateHandler(self, handler):
+        self.cookieAutoHandler = int(handler)
+        print(f"Cookie auto-handler updated to: {self.cookieAutoHandler}")
 
 
     def setup_filter(self):
@@ -27,7 +33,7 @@ class CookieManager:
         #security layer 1 - third party cookies. There are only a few niche use cases like embedded players remembering account data from your browser, but that 
         #also provides an addiional attack vector for tracking and fingerprinting, so we block all third-party cookies by default. Regardless of the usefulness,
         #fingerprinting is still fingerprinting, especially without consent, and this is by no means website-breaking.
-        if self.Sensitivity > 0:
+        if self.Sensitivity > 1:
             if request.thirdParty:
                 print(f"Blocked third-party cookie from: {request.origin.toString()}")
                 return False  # Deny
@@ -48,7 +54,7 @@ class CookieManager:
     def cookieInterceptor(self, request):
         origin = request.origin.toString()
 
-        if origin not in self.pending_cookies:
+        if origin not in self.pending_cookies:  
             self.pending_cookies[origin] = []
 
         return True
@@ -57,7 +63,7 @@ class CookieManager:
         return self.pending_cookies
 
 
-    def on_cookie_added(self, cookie):
+    def on_cookie_added(self, cookie, hostDomain):
         name = cookie.name().data().decode(errors='ignore')
         domain = cookie.domain()
         
@@ -70,40 +76,55 @@ class CookieManager:
             "objectCode": cookie,
             "domain": domain,
             "value": cookie.value().data().decode(errors='ignore'),
-            "prediction": self.predict_use_case(name, domain),
+            "prediction": self.predict_use_case(name, domain, cookie, hostDomain),
             "is_secure": cookie.isSecure()
         }
+
+        print(name, domain, self.predict_use_case(name, domain, cookie, hostDomain))
         
         # Debug print (filtered)
         #print(f"Updated {name} [{self.pending_cookies[cookie_id]['prediction']}]")
         if self.Sensitivity == 0:
-            return self.pending_cookies
+            #If the cookie passes all checks, allow the cookie to save automatically
+            if self.cookieAutoHandler:
+                self.acceptCookie(cookie_id)
+                return
+            else:
+                return
         elif self.Sensitivity == 1:
             try:
-                for key, value in self.pending_cookies.items():
-                    if value["prediction"] == value["prediction"] == "Advertising" or value["prediction"] == "Analytics (Tracking)":
-                        self.cookieEVAPORATOR(key)
+                prediction = self.pending_cookies[cookie_id]["prediction"]
+                if prediction in ["Advertising", "Analytics (Tracking)", "Suspicious"]:
+                    self.cookieEVAPORATOR(cookie_id)
+                else:
+                    #If the cookie passes all checks, allow the cookie to save automatically
+                    if self.cookieAutoHandler:
+                        self.acceptCookie(cookie_id)
                     else:
                         pass
             except RuntimeError:
                 return
         elif self.Sensitivity == 2:
             try:
-                for key, value in self.pending_cookies.items():
-                    if value["prediction"] == "Functional/Preference" or value["prediction"] == "Advertising" or value["prediction"] == "Analytics (Tracking)":
-                        self.cookieEVAPORATOR(key)
+                prediction = self.pending_cookies[cookie_id]["prediction"]
+                if prediction in ["Functional/Preference", "Advertising", "Analytics (Tracking)", "Suspicious"]:
+                    self.cookieEVAPORATOR(cookie_id)
+                else:
+                    #If the cookie passes all checks, allow the cookie to save automatically
+                    if self.cookieAutoHandler:
+                        self.acceptCookie(cookie_id)
                     else:
                         pass
             except RuntimeError:
                 return
         else:
             try:
-                for key, value in self.pending_cookies.items():
-                    self.cookieEVAPORATOR(key)
+                self.cookieEVAPORATOR(cookie_id)
             except RuntimeError:
                 return
 
-    def predict_use_case(self, name, domain):
+
+    def predict_use_case(self, name, domain, cookie, hostDomain):
         n = name.lower()
         d = domain.lower()
         
@@ -118,8 +139,54 @@ class CookieManager:
         
         if any(x in d for x in ["doubleclick", "ads", "adnxs", "facebook", "amazon-adsystem"]):
             return "Advertising"
+        
+        #passes guard clauses, therefore use predictive measures on the existing cookie data
+        prediction_score = 0
 
-        return "Functional/Preference"
+        if not cookie.isSessionCookie():
+            prediction_score += 1
+        
+        days = QDateTime.currentDateTime().daysTo(cookie.expirationDate())
+        if days > 30:
+            prediction_score += 1
+
+        elif days > 365:
+            prediction_score += 2
+
+        elif days > 365 * 5:
+            prediction_score += 3
+        else:
+            prediction_score -= 1
+
+
+        if not cookie.isSecure():
+            prediction_score += 3
+        
+        if not self.same_site(d, hostDomain):
+            prediction_score += 2
+
+        if len(cookie.value().data()) > 200:
+            prediction_score += 1
+
+        tracking_prefixes = [
+            "_ga",
+            "_gid",
+            "_fbp",
+            "_gcl",
+            "_uet",
+            "_pin",
+            "_ttp"
+        ]
+        if any(n.startswith(x) for x in tracking_prefixes):
+            prediction_score += 4
+
+        if not cookie.isHttpOnly():
+            prediction_score += 1
+
+        if prediction_score >= 5: #Placeholder value, not sure what else to add for suspicious cookie additions 
+            return "Suspicious"
+        else:
+            return "Functional/Preference"
     
 
     def cookieEVAPORATOR(self, cookieID):
@@ -134,8 +201,15 @@ class CookieManager:
 
     def acceptCookie(self, cookieID):
         if cookieID in self.pending_cookies:
-            cookie_obj = self.pending_cookies[cookieID]["objectCode"]
-            self.store.setCookie(cookie_obj)
             del self.pending_cookies[cookieID]
             print(f"Accepted: {cookieID}")
-            print(self.store.loadAllCookies())
+
+
+    def same_site(self, cookie_domain, host_domain):
+        cookie_domain = cookie_domain.lstrip(".").lower()
+        host_domain = host_domain.lower()
+
+        return (
+            host_domain == cookie_domain
+            or host_domain.endswith("." + cookie_domain)
+        )
