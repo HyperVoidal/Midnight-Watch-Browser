@@ -683,6 +683,22 @@ class BarManager:
         self.colourpalette_btn.setToolTip("Colour Palettes")
         self.ColourMenu = QMenu(self.parent)
         
+        self.update_colourPalette_menu(Colourdata)
+
+        self.colourpalette_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        self.parent.nav_bar.addWidget(self.colourpalette_btn)
+        self.eColsButton.append("colourpalette_btn")
+
+        self.colourpalette_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.colourpalette_btn.customContextMenuRequested.connect(lambda pos, b=self.colourpalette_btn: self.parent.displayContextMenu(pos, b))
+
+        return self.colourpalette_btn, self.ColourMenu
+    
+    def update_colourPalette_menu(self, Colourdata):
+        self.Colourdata = Colourdata
+
+        self.ColourMenu = QMenu(self.parent)
+        
         for key in Colourdata.keys():
             # Widgets for Menu Items
             Cwidget = QWidget()
@@ -709,14 +725,13 @@ class BarManager:
         # When the main button is clicked, read the current selectedprofile at click time
         self.colourpalette_btn.clicked.connect(lambda checked=False, d=Colourdata: self.parent.ToggleColourTheme(self.parent.selectedprofile, d))
 
-        self.colourpalette_btn.setPopupMode(QToolButton.MenuButtonPopup)
-        self.parent.nav_bar.addWidget(self.colourpalette_btn)
-        self.eColsButton.append("colourpalette_btn")
+        self.ColourMenu.setWindowFlags(self.ColourMenu.windowFlags() | Qt.WindowType.FramelessWindowHint)
+        self.ColourMenu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-        self.colourpalette_btn.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.colourpalette_btn.customContextMenuRequested.connect(lambda pos, b=self.colourpalette_btn: self.parent.displayContextMenu(pos, b))
+        self.parent.style().unpolish(self.ColourMenu)
+        self.parent.style().polish(self.ColourMenu)
+        self.ColourMenu.update()
 
-        return self.colourpalette_btn, self.ColourMenu
 
     def setup_engine_button(self, engines):
         self.engine_btn = QToolButton(self.parent)

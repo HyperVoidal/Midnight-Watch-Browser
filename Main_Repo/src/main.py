@@ -515,7 +515,7 @@ class objectMasterBridge(QObject):
                     json.dump(ColourData, f, indent=4)
 
                 self.browser.colourMenu.clear()
-                self.browser.colourpalette_btn, self.browser.colourMenu = (self.browser.barManager.setup_colourPalette_button(ColourData))
+                self.browser.barManager.update_colourPalette_menu(ColourData)
                 
                 #select applied colour theme
                 self.browser.SelectColourTheme(dictName, ColourData)
