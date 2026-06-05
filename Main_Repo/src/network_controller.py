@@ -112,7 +112,7 @@ class UrlCustomSchemeManager(QWebEngineUrlSchemeHandler):
         ".jpeg":"image/jpeg",
         ".svg":"image/svg+xml",
         ".json":"application/json",
-        ".woff2":"font/woff2"
+        ".gif":"image/gif",
     }
 
     def requestStarted(self, job):
