@@ -3115,6 +3115,9 @@ if __name__ == "__main__":
     # NOW create the application
     app = QApplication(sys.argv)
 
+    #Force fusion theming to keep designs and appearance consistent cross-platform
+    app.setStyle("Fusion")
+
     # Show profile selector
     selectedProfile = None
     handoff_path = f"{srcSourceDir}/data/currentProfile.json"
