@@ -1273,7 +1273,7 @@ class Browser(QMainWindow):
 
         #Data storage management - future plans to use this for history saving
         if profile_config["Name"] != "Ephemeral":
-            base_path = os.path.abspath("./Main_Repo/src/data/Browser_Data")
+            base_path = os.path.abspath(f"{srcSourceDir}/data/Browser_Data")
             profile_path = os.path.join(base_path, "User_Profile")
             cache_path = os.path.join(base_path, "User_Cache")
 
