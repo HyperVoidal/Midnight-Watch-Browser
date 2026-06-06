@@ -540,7 +540,7 @@ class objectMasterBridge(QObject):
             timeCall = QDateTime.currentDateTime()
             #Syntax: time display goes "hh:mm:ss AP". AP is whether to display AM/PM, lowercase hh means 12-hr, uppercase means 24-hr. 
             # Note current restrictions in settings menu allow any combination of these characters up to a max of 32 chars
-            return timeCall.toString(f"{timeFormat}")
+            return str(timeFormat)
 
         elif key == "date":
             #Syntax: formatting [0] is one of 5 options - Global, US, ISO, Long-Form, Minimalist. Formatting is below but super complicated. Formatting [1] is true/false for year.
@@ -588,25 +588,11 @@ class objectMasterBridge(QObject):
                     pass
 
 
-            return dateCall.toString(date_format)
+            return str(date_format)
         
         elif key == "greeting":
-            if settingsData["Greeting"] == True:
-                hourCall = int(QDateTime.currentDateTime().toString("HH")) #returns time in 24hr
-                
-                match hourCall:
-                    case hC if 4 <= hC < 12:
-                        return (f"Good Morning, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Good Morning")
-                    case hC if 12 <= hC < 17:
-                        return (f"Good Afternoon, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Good Afternoon")
-                    case hC if 17 <= hC < 21:
-                        return (f"Good Evening, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Good Evening")
-                    case hC if (21 <= hC <= 23) or (0 <= hC < 4):
-                        return (f"Sleep Well, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Sleep Well")
-                    case _:
-                        return (f"Hello, " + settingsData["Name"]) if settingsData["Name"] != "" else (f"Hello")
-            else:
-                return ""
+
+            return json.dumps({"enabled": settingsData["Greeting"], "name": settingsData["Name"]})
         
         elif key == "BGimage":
             return str(f"images/{settingsData["Image-Url"]}")

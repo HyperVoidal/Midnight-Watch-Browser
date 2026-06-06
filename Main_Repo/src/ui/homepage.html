@@ -42,6 +42,10 @@
             background: rgba(0, 0, 0, 0.2); /*Minor image darkening*/
             transition: backdrop-filter 0.5s ease;
             z-index: 1;
+            /* Rendering Layer Suspension Patch */
+            will-change: auto;
+            backface-visibility: hidden; 
+            -webkit-backface-visibility: hidden;
         }
 
         /*Keep text on top of blur*/
@@ -202,21 +206,44 @@
     </style>
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script>
+
+        let timeFormat = null;
+        let dateFormat = null;
+        let userName = null;
+        let greetingEnabled = null;
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                // Force repaint
+                void document.body.offsetHeight;
+                // Or trigger a resize event
+                window.dispatchEvent(new Event('resize'));
+            }
+        });
+
+
         new QWebChannel(qt.webChannelTransport, (channel) => {
             window.bridge = channel.objects.pyBridge;
 
             const updateElements = () => {
                 // Time Display
-                bridge.getData("time", (time) => {
-                    document.getElementById('time-display').textContent = time;
+                bridge.getData("time", (format) => {
+                    timeFormat = format;
+                    updateClock();
                 });
                 // Date Display
-                bridge.getData("date", (date) => {
-                    document.getElementById('date-display').textContent = date;
+                bridge.getData("date", (format) => {
+                    dateFormat = format;
+                    updateClock();
                 });
                 //Greeting Display
-                bridge.getData("greeting", (greeting) => {
-                    document.getElementById('greeting-display').textContent = greeting;
+                bridge.getData("greeting", (greetingJson) => {
+                    const greetingData = JSON.parse(greetingJson);
+
+                    greetingEnabled = greetingData.enabled;
+                    userName = greetingData.name;
+
+                    updateGreeting();
                 });
                 //Blur Control - technically this could be outside of the greeting display but after settings implementation it's important to keep here
                 bridge.getData("blur", (blurValue) => {
@@ -264,9 +291,100 @@
 
         // Call immediately so it's visible on page load
         updateElements();
+
+        function updateClock() {
+            if (!timeFormat || !dateFormat) {
+                return; // settings haven't arrived yet
+            }
+
+            const now = new Date();
+
+            document.getElementById("time-display").textContent =
+                formatQtDateTime(now, timeFormat);
+
+            document.getElementById("date-display").textContent =
+                formatQtDateTime(now, dateFormat);
+        }
+
+        setInterval(updateClock, 1000);
+        updateClock();
+
         
-        //set interval for updates
-        setInterval(updateElements, 1000);
+
+        function formatQtDateTime(date, format) {
+            const dayNamesShort = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+            const dayNamesLong = [
+                "Sunday","Monday","Tuesday","Wednesday",
+                "Thursday","Friday","Saturday"
+            ];
+
+            const monthNamesShort = [
+                "Jan","Feb","Mar","Apr","May","Jun",
+                "Jul","Aug","Sep","Oct","Nov","Dec"
+            ];
+
+            const monthNamesLong = [
+                "January","February","March","April",
+                "May","June","July","August",
+                "September","October","November","December"
+            ];
+
+            const replacements = {
+                "dddd": dayNamesLong[date.getDay()],
+                "ddd": dayNamesShort[date.getDay()],
+                "yyyy": date.getFullYear(),
+                "yy": String(date.getFullYear()).slice(-2),
+                "MMMM": monthNamesLong[date.getMonth()],
+                "MMM": monthNamesShort[date.getMonth()],
+                "MM": String(date.getMonth()+1).padStart(2,"0"),
+                "M": date.getMonth()+1,
+                "dd": String(date.getDate()).padStart(2,"0"),
+                "d": date.getDate(),
+                "HH": String(date.getHours()).padStart(2,"0"),
+                "hh": String((date.getHours()%12)||12).padStart(2,"0"),
+                "mm": String(date.getMinutes()).padStart(2,"0"),
+                "ss": String(date.getSeconds()).padStart(2,"0"),
+                "AP": date.getHours() >= 12 ? "PM" : "AM",
+                "ap": date.getHours() >= 12 ? "pm" : "am"
+            };
+
+            return format.replace(
+                /dddd|ddd|yyyy|yy|MMMM|MMM|MM|M|dd|d|HH|hh|mm|ss|AP|ap/g,
+                match => replacements[match]
+            );
+        }
+
+
+
+        function getGreeting(hour, name, enabled) {
+
+            if (!enabled)
+                return "";
+
+            let greeting;
+
+            if (hour >= 4 && hour < 12)
+                greeting = "Good Morning";
+            else if (hour >= 12 && hour < 17)
+                greeting = "Good Afternoon";
+            else if (hour >= 17 && hour < 21)
+                greeting = "Good Evening";
+            else
+                greeting = "Sleep Well";
+
+            return name ? `${greeting}, ${name}` : greeting;
+        }
+
+
+        function updateGreeting() {
+            const now = new Date();
+
+            document.getElementById("greeting-display").textContent =
+                getGreeting(now.getHours(), userName, greetingEnabled);
+        }
+
+        setInterval(updateGreeting, 60000);
+        
     });
 
     </script>

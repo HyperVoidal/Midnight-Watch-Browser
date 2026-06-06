@@ -10,12 +10,12 @@
 
             /* Important text for question box display */
             --text-save-tabs: "This feature automatically reopens your last session tabs upon restarting the browser. <break2> This is determined by the last window of the browser you opened. <break3> Note that native html pages such as the homepage and settings menu are exempt from the loader.";
-            --text-name-display: "Sets your internally recognised name. This works primarily with the greeting display. <break2> Press enter to confirm.";
-            --text-display-greeting: "Displays a greeting on the home page screen based on the time of day and your set name.";
-            --text-simple-date-display: "Dropdown to determine what date formatting is displayed on the homepage. <break2> Options (with examples) are: <break1> - Global (e.g. 15/01/26) <break1> - US (e.g. 01/15/26) <break1> - ISO (e.g. 26-01-15) <break1> - Long Form (e.g. Thursday, January 15, 2026) <break1> - Minimalist (e.g. 15 Jan 2026) <break2> Note that years are only shown if the option below is enabled.";
-            --text-display-year: "Appends a year item to the end of whatever date format you select. <break2> Designed primarily for dropdown options but is theoretically compatible with advanced date formatting.";
-            --text-adv-date: "Allows for editing of the date format to a completely custom option. <break2> Press enter to apply. <break2> Note: Year display option may break with custom work. <break2> Syntax: <break1> - d: Day number with no leading zero (e.g 1) <break1> - dd: Day number with leading zero (e.g. 01) <break1> - ddd: Abbreviated localized day name (e.g. “Mon”) <break1> - dddd: Long localized day name (e.g. “Monday”) <break1> - M: Month number with no leading zero (e.g. 1) <break1> - MM:Month number with leading zero (e.g. 01) <break1> - MMM:Abbreviated localized month name (e.g. “Jan”) <break1> - MMMM:Long localized month name (e.g. “January”) <break1> - yy:Year as two digit number (e.g. 99) <break1> - yyyy: Year as four digit number (e.g. 1999). Can be a negative number for BCE years. <break2> Note that some characters are blocked for security purposes. <break1> Available are: <break1>- / . ,";
-            --text-time-display: "A customisable time display system that allows for full control over what type of formatting you'd like. <break2> Press enter to confirm. <break2> Syntax: <break1> - h: Hours with no leading zero (e.g. 1) <break1> - hh: Hours with leading zero (e.g. 01) <break1> - m: Minutes with no leading zero (e.g. 9) <break1> - mm: Minutes with leading zero (e.g. 09) <break1> - s: Seconds with no leading zero (e.g. 6) <break1> - ss: Seconds with leading zero (e.g. 06) <break1> - AP: Add to the end to display time as 12 hr rather than 24 hr format. <break2> Note that most characters are blocked for security";
+            --text-name-display: "Sets your internally recognised name. This works primarily with the greeting display. <break2> This value can either be a name or an empty string. The former addresses you directly, the latter just says the greeting. <break2> Press enter to confirm. <break2> Reload the page to see changes take effect.";
+            --text-display-greeting: "Displays a greeting on the home page screen based on the time of day and your set name. <break2> Reload the page to see changes take effect.";
+            --text-simple-date-display: "Dropdown to determine what date formatting is displayed on the homepage. <break2> Options (with examples) are: <break1> - Global (e.g. 15/01/26) <break1> - US (e.g. 01/15/26) <break1> - ISO (e.g. 26-01-15) <break1> - Long Form (e.g. Thursday, January 15, 2026) <break1> - Minimalist (e.g. 15 Jan 2026) <break2> Note that years are only shown if the option below is enabled. <break2> Reload the page to see changes take effect.";
+            --text-display-year: "Appends a year item to the end of whatever date format you select. <break2> Designed primarily for dropdown options but is theoretically compatible with advanced date formatting. <break2> Reload the page to see changes take effect.";
+            --text-adv-date: "Allows for editing of the date format to a completely custom option. <break2> Press enter to apply. <break1> Reload the page to see changes take effect. <break1> Note: Year display option may break with custom work. <break2> Syntax: <break1> - d: Day number with no leading zero (e.g 1) <break1> - dd: Day number with leading zero (e.g. 01) <break1> - ddd: Abbreviated localized day name (e.g. “Mon”) <break1> - dddd: Long localized day name (e.g. “Monday”) <break1> - M: Month number with no leading zero (e.g. 1) <break1> - MM:Month number with leading zero (e.g. 01) <break1> - MMM:Abbreviated localized month name (e.g. “Jan”) <break1> - MMMM:Long localized month name (e.g. “January”) <break1> - yy:Year as two digit number (e.g. 99) <break1> - yyyy: Year as four digit number (e.g. 1999). Can be a negative number for BCE years. <break2> Note that some characters are blocked for security purposes. <break1> Available are: - / . ,";
+            --text-time-display: "A customisable time display system that allows for full control over what type of formatting you'd like. <break2> Press enter to confirm. <break2> Syntax: <break1> - h: Hours with no leading zero (e.g. 1) <break1> - hh: Hours with leading zero (e.g. 01) <break1> - m: Minutes with no leading zero (e.g. 9) <break1> - mm: Minutes with leading zero (e.g. 09) <break1> - s: Seconds with no leading zero (e.g. 6) <break1> - ss: Seconds with leading zero (e.g. 06) <break1> - AP: Add to the end to display time as 12 hr rather than 24 hr format. <break2> Note that most characters are blocked for security. <break2> Reload the page to see changes take effect.";
             --text-tab-bar-pos: "A dropdown menu to determine the position of the tab bar in the layout. <break2> This setting requires a restart to take effect. <break2> Note: <break1> - All positions are locked to be directly next to displayed web content due to rendering limitations.";
             --text-bar-positions: "Drag and drop to move each box to a different category. <break2> The arrangement of the blocks in the menu determines their arrangement from top to bottom in each category. <break2> Note that this requires a restart for settings to take effect. <break2> Search refers to the navigation bar, bookmarks to the bookmarks bar, and status to the status bar.";
             --text-blur-strength: "Drag the slider around to set the strength of the blur effect applied to the background image of the homepage. <break2> A higher value means more of a blurring effect.";
@@ -102,6 +102,10 @@
             z-index: 10;        /* Sits above the scrollable content */
             pointer-events: none; /* Allows clicking through to settings until active */
             opacity: 0;
+            min-width: 250px;
+            max-width: calc(100% - 40px);
+            display: flex;
+            flex-direction: column;
             transform: translateY(-20px);
             transition: all 0.3s ease;
         }
@@ -118,7 +122,10 @@
             border-radius: 12px;
             padding: 20px;
             color: white;
-            /* Optional: hide the card initially or keep it as a placeholder */
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow-y: auto;
             transition: all 0.3s ease;
         }
         
