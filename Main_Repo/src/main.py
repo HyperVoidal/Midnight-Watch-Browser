@@ -160,7 +160,8 @@ def settingsActivate(toggles):
         #enables logging to be output
         #"--enable-logging=stderr",
         #"--v=1"
-        "--log-level=3"
+        "--log-level=3",
+        "--site-per-process"
         ]
 
     if "Cookie-Prediction-Sensitivity" in toggles.keys():

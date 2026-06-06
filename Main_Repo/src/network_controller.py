@@ -343,7 +343,7 @@ class ScriptletBlocker:
 
 class EVAdInterceptor():
     @staticmethod
-    def deployPayload(browser, profile): #function for blocking ads in embedded in videos   
+    def deployPayload(browser, profile):
         try:
             with open(f"{srcSourceDir}/Javascript_Executables/embeddedadblocker.js", 'r', encoding='utf-8') as f:
                 js_code = f.read()
