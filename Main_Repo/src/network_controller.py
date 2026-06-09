@@ -38,22 +38,24 @@ class InternalPage(QWebEnginePage):
         except Exception:
             req_url = None
 
-        if self.parent and hasattr(self.parent, "add_new_tab"):
-            if req_url and not req_url.isEmpty():
-                new_view = self.parent.add_new_tab(qurl=req_url)
-            else:
-                new_view = self.parent.add_new_tab()
-            return new_view.page()
+        if self.additionalUIElements.WindowConfirmation("Redirect", f"Allow new window to open:\n{req_url.toString() if req_url else 'Unknown URL'}?"):
 
-        # Fallback: standalone popup window
-        new_view = QWebEngineView()
-        new_page = InternalPage(self.profile() if callable(getattr(self, "profile", None)) else self.profile, new_view)
-        new_view.setPage(new_page)
-        new_view.setAttribute(Qt.WA_DeleteOnClose)
-        new_view.resize(1200, 800)
-        new_view.show()
-        return new_page
-    
+            if self.parent and hasattr(self.parent, "add_new_tab"):
+                if req_url and not req_url.isEmpty():
+                    new_view = self.parent.add_new_tab(qurl=req_url)
+                else:
+                    new_view = self.parent.add_new_tab()
+                return new_view.page()
+
+            # Fallback: standalone popup window
+            new_view = QWebEngineView()
+            new_page = InternalPage(self.profile() if callable(getattr(self, "profile", None)) else self.profile, new_view)
+            new_view.setPage(new_page)
+            new_view.setAttribute(Qt.WA_DeleteOnClose)
+            new_view.resize(1200, 800)
+            new_view.show()
+            return new_page
+        
     def acceptNavigationRequest(self, url, nav_type, is_mainframe):
         print("NAV REQUEST: " + str(url))
 
