@@ -29,9 +29,6 @@ class InternalPage(QWebEnginePage):
         self.browser = browser
         self.parent = parent
 
-        #Create window popup system
-        #self.newWindowRequested.connect(self.parent.handleNewWindow)
-
     def createWindow(self, webWindowType):
         try:
             req_url = self.requestedUrl()

@@ -90,7 +90,7 @@ class CookieManager:
                 self.acceptCookie(cookie_id)
                 return
             else:
-                return
+                pass
         elif self.Sensitivity == 1:
             try:
                 prediction = self.pending_cookies[cookie_id]["prediction"]

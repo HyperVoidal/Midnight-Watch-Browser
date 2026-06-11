@@ -126,18 +126,19 @@ def updateDoHSettings(provider, dataStorage):
     config = doh_providers[provider]
     dns_settings = QWebEngineGlobalSettings.DnsMode()
     if provider == "Default":
-        dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SystemOnly
+        dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SystemOnly #No DoH, just use system default
     else:
         if dataStorage["Dns-Fallback"] == True:
-            dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureWithFallback
+            dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureWithFallback #Attempt to use DoH but fallback to default on failure
         else:
-            dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureOnly
+            dns_settings.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureOnly #Use DoH, if fialure just don't resolve until success
 
     if config["url"]:
         dns_settings.serverTemplates = [config["url"]]
     else:
         dns_settings.serverTemplates = []
     
+    #Settings can be none, DoH with fallback, or DoH only
     success = QWebEngineGlobalSettings.setDnsMode(dns_settings)
     if success:
         print(f"Successfully switched browser DNS mode to: {provider}")
@@ -191,7 +192,7 @@ def settingsActivate(toggles):
         ])
 
     if toggles["DeGoogler"] == True:
-        #Disable all screened google flags that allow for a degoogled experience without compromising security too much. This is intneded to be a power-user feature that removes google alongside their inbuilt user protections under the assumption that the user knows what they're doing
+        #Disable all google flags that allow for a degoogled experience without compromising security too much. This is intended to be a power-user feature that removes google alongside their inbuilt user protections under the assumption that the user knows what they're doing
         chromiumFlags.extend([
             "--disable-domain-reliability", #Disables reporting network errors to google
             "--disable-features=MediaRouter,Translate", #Disable chromecast / LAN device discovery
@@ -1249,9 +1250,6 @@ class Browser(QMainWindow):
         settings.setAttribute(settings.WebAttribute.JavascriptCanAccessClipboard, False)
         #Blocks local running html that isn't authorised via the QFlagged UrlScheme
         settings.setAttribute(settings.WebAttribute.LocalContentCanAccessFileUrls, False)
-
-        #Security enable settings
-        settings.setAttribute(settings.WebAttribute.XSSAuditingEnabled, True)
 
         #Would be good to disable for efficiency and maximum security but I need javascript actually working.
         settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
@@ -3063,7 +3061,9 @@ class Browser(QMainWindow):
         domain = cookie.domain()
         value = cookie.value().data().decode()
         #actual logic - refresh cookie dictionary each time a new one is added
-        self.cookiedict = self.cookieManager.on_cookie_added(cookie, self.current_browser.url().host())
+        self.cookieManager.on_cookie_added(cookie, self.current_browser.url().host())
+        self.cookiedict = self.cookieManager.refresh_cookie_list()
+        self.cookieGUI()
 
 
     def cookieGUI(self):

@@ -37,7 +37,7 @@
             "DeGoogler": false,
             "Dns-Fallback": true,
             "GPU-Safe-System": true,
-            "Cookie-Auto-Handler": true
+            "Cookie-Auto-Handler": false
         }
     },
     "id1": {

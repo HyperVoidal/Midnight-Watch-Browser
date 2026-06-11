@@ -541,13 +541,16 @@ class BarManager:
                 Bbutton = QPushButton(name.capitalize())
 
                 FAVurl = f"https://www.google.com/s2/favicons?domain={QUrl(url).host()}&sz=32"
-                response = requests.get(FAVurl)
-                if response.status_code == 200: 
-                    image = QImage()
-                    image.loadFromData(response.content)
-                    pixmap = QPixmap.fromImage(image)
-                else:
-                    #use image for tabIcon.png
+                try:
+                    response = requests.get(FAVurl)
+                    if response.status_code == 200: 
+                        image = QImage()
+                        image.loadFromData(response.content)
+                        pixmap = QPixmap.fromImage(image)
+                    else:
+                        #use image for tabIcon.png
+                        pixmap = QPixmap(str(icon_cache_dir / "tabIcon.png"))
+                except:
                     pixmap = QPixmap(str(icon_cache_dir / "tabIcon.png"))
 
                 Bbutton.setIcon(QIcon(pixmap))
