@@ -1,4 +1,43 @@
+print("before import load")
+
+import builtins
+import time
 import sys
+
+# Track nesting depth to structure nested dependencies like a tree
+_import_depth = 0
+
+# Store original built-in import function
+_original_import = builtins.__import__
+
+def timed_import(name, globals=None, locals=None, fromlist=(), level=0):
+    global _import_depth
+    
+    # Ignore internal tracking triggers or shallow repetitive lookups if cached
+    # However, if it's already in sys.modules, loading time is negligible
+    is_cached = name in sys.modules
+    
+    start_time = time.perf_counter()
+    _import_depth += 1
+    
+    try:
+        # Call the actual built-in import mechanism
+        return _original_import(name, globals, locals, fromlist, level)
+    finally:
+        _import_depth -= 1
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        
+        # Only print modules that actually took time to execute/compile
+        # and ignore minor sub-imports already fetched from the cache
+        if not is_cached and elapsed_ms > 0.01:
+            indent = "  " * _import_depth
+            print(f"[Import Time] {indent}{name}: {elapsed_ms:.2f} ms")
+
+# Inject custom wrapper into the global builtins namespace
+builtins.__import__ = timed_import
+
+print("--- Starting Application Imports ---")
+
 import warnings
 import PySide6
 from PySide6.QtGui import *
@@ -31,7 +70,7 @@ from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
 from backgroundProcessHandler import SecureDnsMonitor, GPULogMonitor
-
+print("--- End Import Loading ---")
 
 print("PyQt6 Version: " + PySide6.__version__)
 print("Internal Chromium Version: " + qWebEngineChromiumVersion())

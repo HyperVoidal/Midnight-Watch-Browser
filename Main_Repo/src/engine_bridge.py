@@ -4,6 +4,7 @@ import sys
 from adblock import Engine, FilterSet
 from pathlib import Path
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestInfo
+from PySide6.QtCore import QTimer
 srcSourceDir = Path(__file__).parent
 
 def load_engine():
@@ -24,7 +25,7 @@ def load_engine():
     return Engine(FilterSet())
 
 # Initialise engine from filter lists
-engine = load_engine()
+engine = QTimer.singleShot(100, load_engine())
 
 # Map Qt Enums to strings that adblock-python understands
 RESOURCE_MAP = {
