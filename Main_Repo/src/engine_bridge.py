@@ -25,7 +25,7 @@ def load_engine():
     return Engine(FilterSet())
 
 # Initialise engine from filter lists
-engine = QTimer.singleShot(100, load_engine())
+engine = load_engine()
 
 # Map Qt Enums to strings that adblock-python understands
 RESOURCE_MAP = {

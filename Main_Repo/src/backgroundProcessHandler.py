@@ -1,7 +1,7 @@
 import PySide6
 from PySide6.QtCore import *
 import requests
-from plyer import notification
+from notifypy import Notify
 from pathlib import Path
 import re
 import time
@@ -47,19 +47,19 @@ class SecureDnsMonitor(QObject):
         if healthy != self.last_state:
             self.last_state = healthy
             if healthy:
-                notification.notify(
-                    app_icon=f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png",
-                    app_name="Midnight Watch",
-                    title="DNS Alert",
-                    message="Encrypted DNS connection (DoH) enabled."
-                )
+                notification = Notify()
+                notification.application_name = "Midnight Watch"
+                notification.title = "DNS Alert"
+                notification.message = "Encrypted DNS connection (DoH) enabled."
+                notification.icon = f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png"
+                notification.send()
             else:
-                notification.notify(
-                    app_icon=f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png",
-                    app_name="Midnight Watch",
-                    title="DNS Alert",
-                    message=("Midnight Watch has detected that the current connection is not allowing a secure DNS connection. \n The browser has dropped to standard unencrypted connection to maintain activity. \n You can change this behaviour in settings.")
-                )
+                notification = Notify()
+                notification.application_name = "Midnight Watch"
+                notification.title = "DNS Alert"
+                notification.message = "Midnight Watch has detected that the current connection is not allowing a secure DNS connection. \n The browser has dropped to standard unencrypted connection to maintain activity. \n You can change this behaviour in settings."
+                notification.icon = f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png"
+                notification.send()
 
 
 

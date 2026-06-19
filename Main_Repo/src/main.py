@@ -62,8 +62,8 @@ import base64
 import io
 import hashlib
 import shutil
-import plyer
-from plyer import notification
+import notifypy
+from notifypy import Notify
 import random
 from shiboken6 import isValid
 from network_controller import *
