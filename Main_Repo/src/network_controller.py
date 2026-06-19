@@ -11,12 +11,25 @@ from PySide6.QtWebChannel import *
 from pathlib import Path
 import os
 import json
+import platform
 from engine_bridge import is_url_safe, get_cosmetic_filters, get_scriptlets
 from ui_core import additionalUIElements
 
 
 
-srcSourceDir = Path(__file__).parent
+OPERATING_SYSTEM = platform.system()
+
+#Create main src source depending on operating system
+if OPERATING_SYSTEM == "Linux":
+    #Main src source since bubblewrap can use default installation location
+    srcSourceDir = Path(__file__).parent
+elif OPERATING_SYSTEM == "Windows":
+    #If using windows I need MSIX which only permits read/write into the appdata location.
+    localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    appDataPath = Path(localAppData) / "Midnight Watch"
+    appDataPath.mkdir(parents=True, exist_ok=True)
+    srcSourceDir = Path(appDataPath)
+
 
 BASE_DIR = (Path(srcSourceDir)/"ui").resolve()
 

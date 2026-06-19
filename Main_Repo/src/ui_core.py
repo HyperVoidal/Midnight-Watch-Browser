@@ -8,14 +8,28 @@ from PySide6.QtWidgets import *
 from functools import partial
 from cookieManager import CookieManager
 import urllib
+import platform
+import os
+
+
+OPERATING_SYSTEM = platform.system()
+
+#Create main src source depending on operating system
+if OPERATING_SYSTEM == "Linux":
+    #Main src source since bubblewrap can use default installation location
+    srcSourceDir = Path(__file__).parent
+elif OPERATING_SYSTEM == "Windows":
+    #If using windows I need MSIX which only permits read/write into the appdata location.
+    localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    appDataPath = Path(localAppData) / "Midnight Watch"
+    appDataPath.mkdir(parents=True, exist_ok=True)
+    srcSourceDir = Path(appDataPath)
 
 
 
-
-icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
+icon_cache_dir = srcSourceDir / "ui/icon_cache"
 icon_cache_dir.mkdir(exist_ok=True)
 
-srcSourceDir =  Path(__file__).parent
 
 def loadActionToggles():
     with open (srcSourceDir / "data/actionToggles.json", "r") as f:

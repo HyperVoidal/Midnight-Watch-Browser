@@ -1,4 +1,4 @@
-print("before import load")
+print("Running Import Time Tracker")
 
 import builtins
 import time
@@ -38,6 +38,55 @@ builtins.__import__ = timed_import
 
 print("--- Starting Application Imports ---")
 
+
+print("Running Data Backend Setup")
+import shutil
+import os
+from pathlib import Path
+import platform
+
+
+def sync_folder(source: Path, target: Path):
+    """Recursively copies missing or newer files from source to target."""
+    if not source.exists():
+        return
+        
+    target.mkdir(parents=True, exist_ok=True)
+    
+    for item in source.iterdir():
+        target_item = target / item.name
+        if item.is_dir():
+            # Recursively dive into subdirectories
+            sync_folder(item, target_item)
+        else:
+            # Only copy if file doesn't exist, or if the source file is newer
+            if not target_item.exists() or (item.stat().st_mtime > target_item.stat().st_mtime):
+                shutil.copy2(item, target_item)
+
+
+OPERATING_SYSTEM = platform.system()
+print("We are running on: " + OPERATING_SYSTEM)
+
+#Create main src source depending on operating system
+if OPERATING_SYSTEM == "Linux":
+    #Main src source since bubblewrap can use default installation location
+    srcSourceDir = Path(__file__).parent
+elif OPERATING_SYSTEM == "Windows":
+    #If using windows I need MSIX which only permits read/write into the appdata location.
+
+    #Create and set appdata path
+    localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    appDataPath = Path(localAppData) / "Midnight Watch"
+    appDataPath.mkdir(parents=True, exist_ok=True)
+    srcSourceDir = Path(appDataPath)
+
+    #Copy all internals into the app data path
+    installDir = Path(__file__).parent
+    assetFolders = ["ui", "data"]
+    for item in assetFolders:
+        sync_folder(installDir / item, appDataPath / item)
+
+print("Configuring Primary Imports")
 import warnings
 import PySide6
 from PySide6.QtGui import *
@@ -50,10 +99,8 @@ from PySide6.QtNetwork import *
 from PySide6.QtWebEngineCore import *
 from PySide6.QtWebChannel import *
 from urllib.parse import urlparse
-from pathlib import Path
 import requests
 import urllib.request
-import os
 from PIL import Image, ImageOps
 import json
 import re
@@ -61,25 +108,28 @@ import uuid
 import base64
 import io
 import hashlib
-import shutil
 import notifypy
 from notifypy import Notify
 import random
 from shiboken6 import isValid
+
+
+print("Setting up additional helper files")
 from network_controller import *
 from ui_core import *
 from cookieManager import CookieManager
 from backgroundProcessHandler import SecureDnsMonitor, GPULogMonitor
 print("--- End Import Loading ---")
 
+
 print("PyQt6 Version: " + PySide6.__version__)
 print("Internal Chromium Version: " + qWebEngineChromiumVersion())
-#Icon cache 
-icon_cache_dir = Path(__file__).parent / "ui/icon_cache"
-icon_cache_dir.mkdir(exist_ok=True)
 
-#Main src source
-srcSourceDir = Path(__file__).parent
+
+
+#Icon cache 
+icon_cache_dir = srcSourceDir / "ui/icon_cache"
+icon_cache_dir.mkdir(exist_ok=True)
 
 
 #Internal urlscheme registry
