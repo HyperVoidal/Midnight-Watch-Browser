@@ -59,9 +59,11 @@ def sync_folder(source: Path, target: Path):
             # Recursively dive into subdirectories
             sync_folder(item, target_item)
         else:
-            # Only copy if file doesn't exist, or if the source file is newer
-            if not target_item.exists() or (item.stat().st_mtime > target_item.stat().st_mtime):
+            # Only copy if file doesn't already exist
+            if not target_item.exists():
                 shutil.copy2(item, target_item)
+            else:
+                print("Skipping: ", str(target_item))
 
 
 OPERATING_SYSTEM = platform.system()
@@ -77,14 +79,19 @@ elif OPERATING_SYSTEM == "Windows":
     #Create and set appdata path
     localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
     appDataPath = Path(localAppData) / "Midnight Watch"
-    appDataPath.mkdir(parents=True, exist_ok=True)
-    srcSourceDir = Path(appDataPath)
+    if not appDataPath.is_dir():
+        appDataPath.mkdir(parents=True, exist_ok=True)
 
     #Copy all internals into the app data path
     installDir = Path(__file__).parent
     assetFolders = ["ui", "data"]
     for item in assetFolders:
         sync_folder(installDir / item, appDataPath / item)
+
+    srcSourceDir = Path(appDataPath)
+else:
+    print("Unsupported operating system detected. Defaulting to current directory for data storage, but this may cause issues.")
+    srcSourceDir = Path(__file__).parent
 
 print("Configuring Primary Imports")
 import warnings
@@ -2850,6 +2857,7 @@ class Browser(QMainWindow):
         with open (f"{srcSourceDir}/data/actionToggles.json", "w") as f:
             json.dump(dataedit, f, indent=4)
         self.profile_config["stored_data"]["Colour-Theme"] = str(profile)
+        saveData(self.currentProfileID, self.profile_config)
             
 
         #recolour icons
