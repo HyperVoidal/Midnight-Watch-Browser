@@ -22,6 +22,8 @@ elif OPERATING_SYSTEM == "Windows":
     appDataPath = Path(localAppData) / "Midnight Watch"
     appDataPath.mkdir(parents=True, exist_ok=True)
     srcSourceDir = Path(appDataPath)
+else:
+    srcSourceDir = Path(__file__).parent
 
 class SecureDnsMonitor(QObject):
 
