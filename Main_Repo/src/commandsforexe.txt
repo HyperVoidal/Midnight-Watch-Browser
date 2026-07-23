@@ -1,0 +1,9 @@
+"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\makeappx.exe" pack /d "C:\Users\saman\OneDrive\Documents\GitHub\Midnight-Engine-Browser\output\MSIX Staging" /p "C:\Users\saman\OneDrive\Documents\GitHub\Midnight-Engine-Browser\output\MidnightWatch.msix"
+"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe" sign /fd SHA256 /f "C:\Users\saman\OneDrive\Documents\GitHub\Midnight-Engine-Browser\output\MidnightWatchCert.pfx" /p "MidnightWatchPass##" "C:\Users\saman\OneDrive\Documents\GitHub\Midnight-Engine-Browser\output\MidnightWatch.msix"
+"C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe" verify /pa /v "C:\Users\saman\OneDrive\Documents\GitHub\Midnight-Engine-Browser\output\MidnightWatch.msix"
+"C:\Program Files\WindowsApps\MidnightWatch_1.0.0.0_neutral__8t28hw3v2jbjm\Midnight Watch.exe"
+
+
+Install certificate to:
+Trusted Root Certification Authorities (Local Machine)
+Trusted Publishers (Local Machine)

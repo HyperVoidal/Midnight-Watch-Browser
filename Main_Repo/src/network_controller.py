@@ -14,23 +14,12 @@ import json
 import platform
 from engine_bridge import is_url_safe, get_cosmetic_filters, get_scriptlets
 from ui_core import additionalUIElements
-
+from path_utils import resolve_source_dir
 
 
 OPERATING_SYSTEM = platform.system()
 
-#Create main src source depending on operating system
-if OPERATING_SYSTEM == "Linux":
-    #Main src source since bubblewrap can use default installation location
-    srcSourceDir = Path(__file__).parent
-elif OPERATING_SYSTEM == "Windows":
-    #If using windows I need MSIX which only permits read/write into the appdata location.
-    localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
-    appDataPath = Path(localAppData) / "Midnight Watch"
-    appDataPath.mkdir(parents=True, exist_ok=True)
-    srcSourceDir = Path(appDataPath)
-else:
-    srcSourceDir = Path(__file__).parent
+srcSourceDir = resolve_source_dir(__file__)
 
 
 BASE_DIR = (Path(srcSourceDir)/"ui").resolve()
@@ -179,7 +168,7 @@ class UrlManager():
     def normalise_url_storage(navlink: bool, url_input: str):
         pass
 
-    def normalise_url(navlink: bool, url_input: str):
+    def normalise_url(self, navlink: bool, url_input: str):
         qurl = QUrl.fromUserInput(url_input)
 
         # Guard clause for invalid URLs
@@ -355,39 +344,35 @@ class ScriptletBlocker:
             print(f"Injected scriptlets for {url}")
 
 
-class EVAdInterceptor():
+
+class AdditionalAdHide():
     @staticmethod
     def deployPayload(browser, profile):
+        scripts_collection = profile.scripts()
+
+        # Safely remove existing iterations
+        for s in scripts_collection.toList():
+            if s.name() == "EV_Censor_AdBlock_Payload":
+                scripts_collection.remove(s)
+
+        # FIX FOR MSIX FILE LOOKUPS: Use hard, fully qualified base pathways
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        target_js_path = os.path.join(base_dir, "Javascript_Executables", "censorBlocker.js")
+
         try:
-            with open(f"{srcSourceDir}/Javascript_Executables/embeddedadblocker.js", 'r', encoding='utf-8') as f:
+            with open(target_js_path, 'r', encoding='utf-8') as f:
                 js_code = f.read()
         except IOError as e:
-            print(f"Error reading embeddedadblocker javascript file")
+            print(f"MSIX Deployment System - File read failure: {e}")
             js_code = ""
-        #Deploy JS payload for script blocking
-        script = QWebEngineScript()
-        script.setSourceCode(js_code)
-        script.setName("EVAdIntercept_Payload")
-        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-        script.setRunsOnSubFrames(True)
 
+        if js_code:
+            script = QWebEngineScript()
+            script.setSourceCode(js_code)
+            script.setName("EV_Censor_AdBlock_Payload")
+            script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+            script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+            script.setRunsOnSubFrames(False) # Kept to False to prevent sandboxed iframe thread drops
 
-        try:
-            with open(f"{srcSourceDir}/Javascript_Executables/youtubeBlocker.js", 'r', encoding='utf-8') as f:
-                ytb_txt = f.read()
-        except IOError as e:
-            print(f"Error reading youtube adblocker javascript file")
-            ytb_txt = ""
-        ytbScript = QWebEngineScript()
-        ytbScript.setSourceCode(ytb_txt)
-        ytbScript.setName("Youtube_Script_Blocker")
-        ytbScript.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        ytbScript.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-        ytbScript.setRunsOnSubFrames(True)
-
-        #Add to the page's script collection
-        #browser.page().scripts().clear()
-        #profile.scripts?
-        profile.scripts().insert(script)
-        profile.scripts().insert(ytbScript)
+            scripts_collection.insert(script)
+            print("MSIX Deployment System - Script loaded successfully.")

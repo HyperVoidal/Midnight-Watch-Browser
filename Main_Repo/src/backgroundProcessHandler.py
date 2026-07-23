@@ -1,5 +1,7 @@
 import PySide6
 from PySide6.QtCore import *
+from PySide6.QtWidgets import *
+from PySide6.QtGui import *
 import requests
 from notifypy import Notify
 from pathlib import Path
@@ -8,35 +10,275 @@ import time
 from collections import deque
 import platform
 import os
+import json
+from path_utils import resolve_source_dir
 
 
 OPERATING_SYSTEM = platform.system()
 
-#Create main src source depending on operating system
-if OPERATING_SYSTEM == "Linux":
-    #Main src source since bubblewrap can use default installation location
-    srcSourceDir = Path(__file__).parent
-elif OPERATING_SYSTEM == "Windows":
-    #If using windows I need MSIX which only permits read/write into the appdata location.
-    localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
-    appDataPath = Path(localAppData) / "Midnight Watch"
-    appDataPath.mkdir(parents=True, exist_ok=True)
-    srcSourceDir = Path(appDataPath)
-else:
-    srcSourceDir = Path(__file__).parent
+srcSourceDir = resolve_source_dir(__file__)
+
+class NotificationWidget(QFrame):
+    
+    clicked = Signal()
+    closed = Signal()
+
+    def __init__(self, parent=None, timeout=5000, title="", message="", icon=None):
+        super().__init__(parent)
+        self.timeout = timeout
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.setStyleSheet("""
+            QFrame#card {
+                background: rgba(38, 42, 50, 220);
+                border: 1px solid rgba(80, 145, 255, 180);
+                border-radius: 12px;
+            }
+
+            QLabel#title {
+                color: #FFFFFF;
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            QLabel#message {
+                color: #FFFFFF;
+                font-size: 12px;
+                opacity: 0.95;
+            }
+
+            QLabel#iconLabel {
+                margin-right: 8px;
+            }
+
+            QPushButton#closeButton {
+                background: rgba(255,255,255,0.06);
+                color: #FFFFFF;
+                border: none;
+                border-radius: 13px;
+                font-weight: 700;
+                min-width: 26px;
+                min-height: 26px;
+            }
+
+            QPushButton#closeButton:hover {
+                background: rgba(255,255,255,0.12);
+                color: #ff6b6b;
+            }
+        """)
+
+        self.resize(350, 150)
+
+        outerLayout = QVBoxLayout(self)
+        outerLayout.setContentsMargins(8, 8, 8, 8)
+
+        card = QFrame()
+        card.setObjectName("card")
+
+        outerLayout.addWidget(card)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
+
+        # Combined row: icon | (title + message) | close
+        row = QHBoxLayout()
+        row.setSpacing(10)
+
+        # Icon
+        iconLabel = QLabel()
+        iconLabel.setObjectName("iconLabel")
+        iconLabel.setFixedSize(40, 40)
+        iconLabel.setAlignment(Qt.AlignCenter)
+        if icon:
+            try:
+                if isinstance(icon, QIcon):
+                    pix = icon.pixmap(32, 32)
+                else:
+                    pix = QPixmap(str(icon))
+                pix = pix.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                iconLabel.setPixmap(pix)
+            except Exception:
+                iconLabel.setPixmap(QApplication.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(32, 32))
+        else:
+            iconLabel.setPixmap(QApplication.style().standardIcon(QStyle.SP_MessageBoxInformation).pixmap(32, 32))
+
+        # Content (title + message)
+        content = QVBoxLayout()
+        content.setSpacing(4)
+        titleLabel = QLabel(title)
+        titleLabel.setObjectName("title")
+        body = QLabel(message)
+        body.setObjectName("message")
+        body.setWordWrap(True)
+        content.addWidget(titleLabel)
+        content.addWidget(body)
+
+        # Close button
+        closeButton = QPushButton("✕")
+        closeButton.setObjectName("closeButton")
+        closeButton.setFixedSize(26, 26)
+        closeButton.clicked.connect(self.closeAnimated)
+
+        row.addWidget(iconLabel)
+        row.addLayout(content, 1)
+        row.addWidget(closeButton)
+
+        layout.addLayout(row)
+
+        # subtle shadow to lift the notification off background
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(16)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        shadow.setOffset(0, 6)
+        card.setGraphicsEffect(shadow)
+
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.closeAnimated)
+    
+    def showAnimated(self):
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        final_x = screen.right() - self.width() - 20
+        final_y = screen.bottom() - self.height() - 20
+        start_x = final_x + self.width() + 20
+
+        self.move(start_x, final_y)
+        self.show()
+        self.timer.start(self.timeout)
+
+        self.slide_animation = QPropertyAnimation(self, b"pos")
+        self.slide_animation.setDuration(500)
+        self.slide_animation.setStartValue(QPoint(start_x, final_y))
+        self.slide_animation.setEndValue(QPoint(final_x, final_y))
+        self.slide_animation.start()
+
+    def closeAnimated(self):
+        self.timer.stop()
+
+        end_x = self.x() + self.width() + 20
+        self.slide_animation = QPropertyAnimation(self, b"pos")
+        self.slide_animation.setDuration(500)
+        self.slide_animation.setStartValue(self.pos())
+        self.slide_animation.setEndValue(QPoint(end_x, self.y()))
+        self.slide_animation.finished.connect(self.close)
+        self.slide_animation.start()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+
+        super().mousePressEvent(event)
+
+
+class NotificationManager(QObject):
+
+    def __init__(self):
+        super().__init__()
+        self.activeNotifications = []
+
+    def showNotification(self, title, message):
+        notif = NotificationWidget(
+            timeout=5000,
+            title=title,
+            message=message
+        )
+
+        self.activeNotifications.append(notif)
+
+        notif.destroyed.connect(
+            lambda: self.activeNotifications.remove(notif)
+        )
+
+        notif.showAnimated()
+        return notif
+
+
+class NotificationClickDialog(QDialog):
+    def __init__(self, title, message, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Expanded Notification Info")
+        self.setWindowIcon(QIcon(f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png"))
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: rgb(45, 45, 60);
+            }
+            QLabel#dialogTitle {
+                color: white;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QLabel#dialogMessage {
+                color: white;
+                font-size: 13px;
+            }
+            QPushButton#okButton {
+                background-color: rgb(60, 60, 75);
+                color: white;
+                border: 2px solid rgb(63, 129, 255);
+                border-radius: 18px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton#okButton:hover {
+                background-color: rgb(70, 70, 85);
+            }
+        """)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("dialogTitle")
+        main_layout.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        message_label = QLabel(message)
+        message_label.setObjectName("dialogMessage")
+        message_label.setWordWrap(True)
+        main_layout.addWidget(message_label)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        ok_button = QPushButton("OK")
+        ok_button.setObjectName("okButton")
+        ok_button.clicked.connect(self.accept)
+        button_layout.addWidget(ok_button)
+
+        button_layout.addStretch()
+        main_layout.addLayout(button_layout)
+
+        self.resize(420, 180)
+
+
+class OnNotificationClick(QObject):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def windowCreate(self, title, message):
+        def open_dialog():
+            dialog = NotificationClickDialog(title, message)
+            dialog.exec()
+        return open_dialog
+
 
 class SecureDnsMonitor(QObject):
 
     def __init__(self, triggerDnsCheck, doh_url):
         super().__init__()
 
+        self.NotificationManager = NotificationManager()
         self.doh_url = doh_url
         self.triggerDnsCheck = triggerDnsCheck
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check_dns)
+        self.onNotificationClicked = OnNotificationClick()
 
-        # every 10 seconds
         self.timer.start(10000)
 
         self.last_state = None
@@ -63,19 +305,20 @@ class SecureDnsMonitor(QObject):
         if healthy != self.last_state:
             self.last_state = healthy
             if healthy:
-                notification = Notify()
-                notification.application_name = "Midnight Watch"
-                notification.title = "DNS Alert"
-                notification.message = "Encrypted DNS connection (DoH) enabled."
-                notification.icon = f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png"
-                notification.send()
+                if self.NotificationManager is not None:
+                    self.NotificationManager.showNotification(
+                        title="DNS Alert",
+                        message="Encrypted DNS connection (DoH) enabled."
+                    )
+                    
+
             else:
-                notification = Notify()
-                notification.application_name = "Midnight Watch"
-                notification.title = "DNS Alert"
-                notification.message = "Midnight Watch has detected that the current connection is not allowing a secure DNS connection. \n The browser has dropped to standard unencrypted connection to maintain activity. \n You can change this behaviour in settings."
-                notification.icon = f"{srcSourceDir}/ui/icon_cache/tightlyCroppedIcon.png"
-                notification.send()
+                if self.NotificationManager is not None:
+                    notif = self.NotificationManager.showNotification(
+                        title="DNS Alert",
+                        message="Encrypted DNS connection (DoH) disabled automatically. Click for more details."
+                    )
+                    notif.clicked.connect(self.onNotificationClicked.windowCreate("DNS Encryption Fail", "Midnight Watch has detected that the current connection is not allowing a secure DNS connection.\n\nThe browser has dropped to a standard unencrypted connection to maintain activity.\n\nYou can change this behaviour in settings."))
 
 
 

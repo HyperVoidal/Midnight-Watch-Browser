@@ -10,27 +10,22 @@ from cookieManager import CookieManager
 import urllib
 import platform
 import os
+from path_utils import resolve_source_dir
 
 
 OPERATING_SYSTEM = platform.system()
 
-#Create main src source depending on operating system
-if OPERATING_SYSTEM == "Linux":
-    #Main src source since bubblewrap can use default installation location
-    srcSourceDir = Path(__file__).parent
-elif OPERATING_SYSTEM == "Windows":
-    #If using windows I need MSIX which only permits read/write into the appdata location.
-    localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
-    appDataPath = Path(localAppData) / "Midnight Watch"
-    appDataPath.mkdir(parents=True, exist_ok=True)
-    srcSourceDir = Path(appDataPath)
-else:
-    srcSourceDir = Path(__file__).parent
+srcSourceDir = resolve_source_dir(__file__)
 
 
 
 icon_cache_dir = srcSourceDir / "ui/icon_cache"
-icon_cache_dir.mkdir(exist_ok=True)
+if not icon_cache_dir.is_dir():
+    try:
+        icon_cache_dir.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        # Extra guard if Windows tries to throw an error anyway
+        pass
 
 
 def loadActionToggles():
@@ -861,6 +856,8 @@ class BarManager:
         self.cookie_btn.setText("cookie_btn")
         self.cookie_btn.setToolTip("Accept/Deny Cookies")
         self.cookieMenu = QMenu(self.parent)
+        self.cookieMenu.setWindowFlags(self.cookieMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.cookieMenu.setAttribute(Qt.WA_TranslucentBackground)
         setattr(self, "cookie_btn", self.cookie_btn)
 
         self.cookie_btn.setMenu(self.cookieMenu)
@@ -958,6 +955,9 @@ class BarManager:
         menu_scroll_action = QWidgetAction(self.cookieMenu)
         menu_scroll_action.setDefaultWidget(scroll_area)
         self.cookieMenu.addAction(menu_scroll_action)
+
+        self.cookieMenu.setWindowFlags(self.cookieMenu.windowFlags() | Qt.FramelessWindowHint)
+        self.cookieMenu.setAttribute(Qt.WA_TranslucentBackground)
 
         return self.cookieMenu
     

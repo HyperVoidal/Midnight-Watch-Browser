@@ -1,8 +1,0 @@
-adblock==0.6.0
-Pillow==12.2.0
-pyside6==6.11.1
-pyside6_addons==6.11.1
-pyside6_essentials==6.11.1
-Requests==2.34.2
-shiboken6==6.11.1
-notify-py==1.0.4

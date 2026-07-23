@@ -1,3 +1,37 @@
+import os
+import sys
+import tempfile
+from path_utils import resolve_source_dir, pathingDefine
+
+MSIX_REDIRECT = pathingDefine()
+if sys.platform == "win32" and MSIX_REDIRECT:
+    print("Frozen!")
+    
+    # Grab proper path for WebEngine data and cache in the app-local user store
+    user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
+    local_appdata = os.environ.get("LOCALAPPDATA", os.path.join(user_profile, "AppData", "Local"))
+    real_storage_dir = os.path.join(local_appdata, "MidnightWatch")
+    os.makedirs(real_storage_dir, exist_ok=True)
+    
+    # Change default chromium path to the new path for windows
+    os.environ["QTWEBENGINE_XDG_DATA_HOME"] = os.path.join(real_storage_dir, "Data")
+    os.environ["QTWEBENGINE_XDG_CACHE_HOME"] = os.path.join(real_storage_dir, "Cache")
+    
+    # Put notifications and temporary operations inside a writable local path inside the package-allowed app data area.
+    temp_dir = os.path.join(real_storage_dir, "Temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    os.environ["TEMP"] = temp_dir
+    os.environ["TMP"] = temp_dir
+    os.environ["TMPDIR"] = temp_dir
+    tempfile.tempdir = temp_dir
+    
+    # Inject engine-level flags to keep Chromium safely operating inside msix packaging
+    sys.argv.append(f"--user-data-dir={os.path.join(real_storage_dir, 'UserData')}")
+    sys.argv.append(f"--disk-cache-dir={os.path.join(real_storage_dir, 'DiskCache')}")
+
+print("Build: 1.0.3.5")
+
+
 print("Running Import Time Tracker")
 
 import builtins
@@ -38,60 +72,135 @@ builtins.__import__ = timed_import
 
 print("--- Starting Application Imports ---")
 
-
 print("Running Data Backend Setup")
+import sys
 import shutil
 import os
 from pathlib import Path
 import platform
+import traceback
+import stat
 
+#Handle root dll fixes
+if sys.platform == "win32" and MSIX_REDIRECT:
+    # Get the root directory where PyInstaller extracted files
+    base_dir = os.path.dirname(sys.executable)
+    
+    # Points to the folder where _hashlib.pyd and other modules live
+    internal_dir = os.path.join(base_dir, "_internal")
+    
+    # Points to the PySide6 image plugins folder
+    plugins_dir = os.path.join(internal_dir, "PySide6", "plugins", "imageformats")
+    
+    # Force the Windows OS kernel to look in these directories for native DLLs
+    if os.path.exists(internal_dir):
+        os.add_dll_directory(internal_dir)
+        
+    if os.path.exists(plugins_dir):
+        os.add_dll_directory(plugins_dir)
 
 def sync_folder(source: Path, target: Path):
-    """Recursively copies missing or newer files from source to target."""
+    """Recursively copies missing or newer files from source to target and unlocks them."""
     if not source.exists():
         return
-        
+
+    protected_files = {"profileData.json", "currentProfile.json", "actionToggles.json", "Cookies"}
+
+    if target.exists() and not target.is_dir():
+        try:
+            target.unlink()
+        except Exception:
+            pass
+
     target.mkdir(parents=True, exist_ok=True)
-    
+    try:
+        os.chmod(target, stat.S_IWRITE | stat.S_IREAD)
+    except Exception:
+        pass
+
     for item in source.iterdir():
         target_item = target / item.name
         if item.is_dir():
-            # Recursively dive into subdirectories
             sync_folder(item, target_item)
         else:
-            # Only copy if file doesn't already exist
-            if not target_item.exists():
+            if item.name in protected_files and target_item.exists():
+                try:
+                    os.chmod(target_item, stat.S_IWRITE | stat.S_IREAD)
+                except Exception:
+                    pass
+                continue
+
+            try:
                 shutil.copy2(item, target_item)
-            else:
-                print("Skipping: ", str(target_item))
+            except Exception:
+                pass
+
+            try:
+                os.chmod(target_item, stat.S_IWRITE | stat.S_IREAD)
+            except Exception:
+                pass
 
 
 OPERATING_SYSTEM = platform.system()
-print("We are running on: " + OPERATING_SYSTEM)
 
-#Create main src source depending on operating system
+
 if OPERATING_SYSTEM == "Linux":
-    #Main src source since bubblewrap can use default installation location
-    srcSourceDir = Path(__file__).parent
-elif OPERATING_SYSTEM == "Windows":
-    #If using windows I need MSIX which only permits read/write into the appdata location.
+    srcSourceDir = resolve_source_dir(__file__)
+elif OPERATING_SYSTEM == "Windows" and MSIX_REDIRECT:
+    try:
 
-    #Create and set appdata path
-    localAppData = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
-    appDataPath = Path(localAppData) / "Midnight Watch"
-    if not appDataPath.is_dir():
-        appDataPath.mkdir(parents=True, exist_ok=True)
+        localAppData = os.environ.get("LOCALAPPDATA", "")
+        base_target = Path(localAppData) / "MidnightWatch" if localAppData else Path(os.path.expanduser("~")) / "AppData" / "Local" / "MidnightWatch"
 
-    #Copy all internals into the app data path
-    installDir = Path(__file__).parent
-    assetFolders = ["ui", "data"]
-    for item in assetFolders:
-        sync_folder(installDir / item, appDataPath / item)
+        # Keep the app data under the package-visible local user store so MSIX and the WebEngine
+        # renderer can both read/write the profile and cache data without sandbox denials.
+        os.environ["LOCALAPPDATA"] = str(base_target.parent)
+        os.environ["HOME"] = str(base_target)
 
-    srcSourceDir = Path(appDataPath)
+        temp_dir = base_target / "Temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["TEMP"] = str(temp_dir)
+        os.environ["TMP"] = str(temp_dir)
+        os.environ["TMPDIR"] = str(temp_dir)
+
+        os.environ["QTWEBENGINE_XDG_DATA_HOME"] = str(base_target / "Data")
+        os.environ["QTWEBENGINE_XDG_CACHE_HOME"] = str(base_target / "Cache")
+
+
+        # Determine exact internal extraction path safe for PyInstaller/MSIX
+        if hasattr(sys, '_MEIPASS'):
+            installDir = Path(sys._MEIPASS)
+        else:
+            installDir = Path(__file__).parent
+
+
+        
+        if not base_target.is_dir():
+            base_target.mkdir(parents=True, exist_ok=True)
+
+        assetFolders = ["ui", "data", "Javascript_Executables"]
+        for item in assetFolders:
+            sync_folder(installDir / item, base_target / item)
+
+        srcSourceDir = Path(base_target)
+
+        
+
+        # Set internal chromium storage paths to run through the allowed processes
+        subprocess_path = installDir / "QtWebEngineProcess.exe"
+        if not subprocess_path.exists():
+            # Using PyInstaller's _internal layout structure
+            subprocess_path = installDir / "_internal" / "PySide6" / "QtWebEngineProcess.exe"
+
+        if subprocess_path.exists():
+            os.environ["QTWEBENGINEPROCESS_PATH"] = str(subprocess_path)
+
+    except Exception as e:
+        print("Critical error in file structure setup: ", e)
 else:
-    print("Unsupported operating system detected. Defaulting to current directory for data storage, but this may cause issues.")
     srcSourceDir = Path(__file__).parent
+
+
 
 print("Configuring Primary Imports")
 import warnings
@@ -115,10 +224,9 @@ import uuid
 import base64
 import io
 import hashlib
-import notifypy
-from notifypy import Notify
 import random
 from shiboken6 import isValid
+import sqlite3
 
 
 print("Setting up additional helper files")
@@ -136,7 +244,12 @@ print("Internal Chromium Version: " + qWebEngineChromiumVersion())
 
 #Icon cache 
 icon_cache_dir = srcSourceDir / "ui/icon_cache"
-icon_cache_dir.mkdir(exist_ok=True)
+if not icon_cache_dir.is_dir():
+    try:
+        icon_cache_dir.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        # Extra guard if Windows tries to throw an error anyway
+        pass
 
 
 #Internal urlscheme registry
@@ -155,6 +268,104 @@ def get_normIcon(name):
 
     return QIcon(str(icon_path))
 
+def printMatchingCookies(cursor, pattern):
+    cursor.execute("SELECT host_key, name FROM cookies WHERE host_key LIKE ?", (pattern,))
+    rows = cursor.fetchall()
+    print(f"Found {len(rows)} matching cookies")
+    for row in rows:
+        print(row)
+    return len(rows)
+
+def massCookieDelete(preserveList, cookiePath):
+    db = cookiePath.resolve()
+    db_uri = f"file:{db}?mode=rw"
+    print("Writable file:", os.access(db, os.W_OK))
+    print("Writable folder:", os.access(db.parent, os.W_OK))
+    print("Readonly attribute:", not (os.stat(db).st_mode & stat.S_IWRITE))
+
+    if preserveList:
+        preserveList = [s.strip() for s in preserveList.split(",") if s.strip()]
+    else:
+        preserveList = []
+
+    max_retries = 10
+    for attempt in range(max_retries):
+        try:
+            with sqlite3.connect(db_uri, uri=True, timeout=5.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA journal_mode=MEMORY;")
+                
+                cursor.execute("PRAGMA table_info(cookies)")
+                for row in cursor.fetchall():
+                    print(row)
+
+                # Show what is being preserved
+                if preserveList:
+                    print("Preserving:")
+                    for site in preserveList:
+                        printMatchingCookies(cursor, f"%{site}%")
+
+                # Count cookies before deletion
+                cursor.execute("SELECT COUNT(*) FROM cookies")
+                before = cursor.fetchone()[0]
+                print(f"Total cookies before: {before}")
+
+                if preserveList:
+                    conditions = " AND ".join(["host_key NOT LIKE ?"] * len(preserveList))
+                    params = [f"%{site}%" for site in preserveList]
+                    cursor.execute(f"DELETE FROM cookies WHERE {conditions}", params)
+                else:
+                    cursor.execute("DELETE FROM cookies")
+                print(f"Deleted rows: {cursor.rowcount}")
+                conn.commit()
+                return
+                
+        except sqlite3.OperationalError as e:
+            if "readonly" in str(e).lower() and attempt < max_retries - 1:
+                print(f"Database locked or marked readonly. Retrying ({attempt + 1}/{max_retries})...")
+                time.sleep(0.3)
+            else:
+                print(e)
+
+        
+
+def targetedCookieDelete(deleteList, cookiePath):
+    if not deleteList:
+        return
+    deleteList = [s.strip() for s in deleteList.split(",") if s.strip()]
+    db = cookiePath.resolve()
+    db_uri = f"file:{db}?mode=rw" 
+    print("Writable file:", os.access(db, os.W_OK))
+    print("Writable folder:", os.access(db.parent, os.W_OK))
+    print("Readonly attribute:", not (os.stat(db).st_mode & stat.S_IWRITE))
+    max_retries = 10
+    for attempt in range(max_retries):
+        try:
+            with sqlite3.connect(db_uri, uri=True) as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA journal_mode=MEMORY;")
+
+                cursor.execute("PRAGMA table_info(cookies)")
+                for row in cursor.fetchall():
+                    print(row)
+
+                for site in deleteList:
+                    pattern = f"%{site}%"
+                    printMatchingCookies(cursor, pattern)
+                    cursor.execute("DELETE FROM cookies WHERE host_key LIKE ?", (pattern,))
+                    print(f"Deleted rows: {cursor.rowcount}")
+                conn.commit()
+                return
+
+        except sqlite3.OperationalError as e:
+            if "readonly" in str(e).lower() and attempt < max_retries - 1:
+                print(f"Database locked or marked readonly. Retrying ({attempt + 1}/{max_retries})...")
+                time.sleep(0.3)
+            else:
+                print(e)
+                pass
+
+        
 #Variable initialisation
 global eColsButton, eColsStyle
 eColsButton = []
@@ -239,7 +450,7 @@ def updateDoHSettings(provider, dataStorage):
     if success:
         print(f"Successfully switched browser DNS mode to: {provider}")
         # Clear cache so subsequent lookups hit the new DNS endpoints instantly
-        QWebEngineProfile.defaultProfile().clearHttpCache()
+        #QWebEngineProfile.defaultProfile().clearHttpCache()
     else:
         print(f"Chromium failed to update settings for provider: {provider}")
         
@@ -250,13 +461,17 @@ def updateDoHSettings(provider, dataStorage):
 
 def settingsActivate(toggles):
 
+    if sys.platform == "win32" and MSIX_REDIRECT:
+        #QtWebEngineFlags for Chromium level data stores on windows msix specifically
+        os.environ["QTWEBENGINE_XDG_DATA_HOME"] = os.path.join(real_storage_dir, "Data")
+        os.environ["QTWEBENGINE_XDG_CACHE_HOME"] = os.path.join(real_storage_dir, "Cache")
+
     chromiumFlags = [
         #allows DNS over HTTPS system
         "--enable-features=DnsOverHttps ", 
         "--force-fieldtrials=AsyncDns/Enabled",
         #enables logging to be output
-        #"--enable-logging=stderr",
-        #"--v=1"
+        "--enable-logging=stderr",
         "--log-level=3",
         "--site-per-process"
         ]
@@ -483,7 +698,12 @@ class objectMasterBridge(QObject):
                 self.browser.cookieManager.updateHandler(int(dataValue))
 
             if dataHeader == "cookieMassDelete":
-                self.browser.cookieMassDelete()
+                print(str(dataValue["action"]))
+                print(str(dataValue["sites"]))
+
+                self.browser.cookieRestart(dataValue["action"], dataValue["sites"])
+
+
 
             if dataHeader == "DNSoverHTTPS": 
                 settingsData["DNS-over-HTTPS"] = str(dataValue)
@@ -828,7 +1048,7 @@ class objectMasterBridge(QObject):
         settingsData = self.browser.settingsData
 
         # update live profile config
-        self.browser.profile_config["stored_data"] = settingsData
+        self.browser.profile_config["stored_data"].update(settingsData)
 
         # persist to profileData.json
         saveData(self.browser.currentProfileID, self.browser.profile_config)
@@ -1282,7 +1502,7 @@ class profileSelectUI(QDialog):
 class Browser(QMainWindow):
     def __init__(self, profile_config: dict):
         super().__init__()
-        self.setWindowTitle("Midnight Watch Browser")
+        self.setWindowTitle("Browser")
         self.resize(1200, 800)
         self.setWindowIcon(get_normIcon("tightlyCroppedIcon.png"))
         global eColsStyle
@@ -1294,21 +1514,48 @@ class Browser(QMainWindow):
         profileData = profile_config["stored_data"]
         self.profile_config = profile_config
 
-        if profile_config["Name"] == "Ephemeral":
-            self.profile = QWebEngineProfile("Ephemeral", self)
+        # Apply Chromium-related settings before the first WebEngine profile is created.
+        self.settingsData = json.loads(json.dumps(profileData))
+        settingsActivate(self.settingsData)
+
+        print("Initialising QWebEngineProfile")
+        profile_name = "Ephemeral" if profile_config["Name"] == "Ephemeral" else "PersistentUser"
+        self.profile = QWebEngineProfile(profile_name, self)
+
+        if sys.platform == "win32" and MSIX_REDIRECT:
+            data_root = Path(os.environ.get("QTWEBENGINE_XDG_DATA_HOME", str(srcSourceDir / "Data")))
+            cache_root = Path(os.environ.get("QTWEBENGINE_XDG_CACHE_HOME", str(srcSourceDir / "Cache")))
+            storage_path = data_root / profile_name
+            cache_path = cache_root / profile_name
         else:
-            self.profile = QWebEngineProfile("PersistentUser", self)
+            base_path = os.path.abspath(f"{srcSourceDir}/data/Browser_Data")
+            storage_path = Path(os.path.join(base_path, "User_Profile"))
+            cache_path = Path(os.path.join(base_path, "User_Cache"))
+            print(srcSourceDir)
+
+        storage_path.mkdir(parents=True, exist_ok=True)
+        cache_path.mkdir(parents=True, exist_ok=True)
+        self.profile.setPersistentStoragePath(str(storage_path))
+        self.profile.setCachePath(str(cache_path))
+
+        print("QWebEngineProfile initialised")
 
         #Assign URL Scheme to page loaders
+        print("Assigning URL Scheme to page loaders")
         self.handler = UrlCustomSchemeManager()
         self.profile.installUrlSchemeHandler(b"midnightwatch", self.handler)
+        print("URL Scheme assigned to page loaders")
 
         #Create browser widgets
+        print("Assigning QWebEngineView to browser")
         self.current_browser = QWebEngineView(self)
-        
+        print("QWebEngineView assigned to browser")
+
         #Link webview to context menu to override main caller class
         self.current_browser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.current_browser.customContextMenuRequested.connect(lambda pos: self.displayWebContextMenu(pos))
+
+        self.current_browser.page().fullScreenRequested.connect(self.handleFullScreenRequest)
 
         #Create devtools window link #1
         self.devtools_view = QWebEngineView()
@@ -1324,17 +1571,20 @@ class Browser(QMainWindow):
         with open(f"{srcSourceDir}/data/actionToggles.json","w") as f:
             json.dump(profileData, f, indent=4)
 
-        self.settingsData = json.loads(json.dumps(profileData))
         self.currentProfileID = profile_config.get("id", None)
 
-        settingsActivate(self.settingsData)
+        print("Activating user settings")
+        print("User settings activated")
 
         #Url Manager
         self.UrlManager = UrlManager()
         
         #load webchannel data from internal system to ui folder
+        print("Loading webchannel js")
         ensure_webchannel_js(os.path.join(srcSourceDir, "ui"))
+        print("Webchannel js loaded")
 
+        print("Enabling additional security settings")
         #settings system
         settings = self.profile.settings()
         #Set to false to enable sandboxing and security
@@ -1349,41 +1599,52 @@ class Browser(QMainWindow):
 
         #Would be good to disable for efficiency and maximum security but I need javascript actually working.
         settings.setAttribute(settings.WebAttribute.JavascriptEnabled, True)
-        
+        print("Additional security settings enabled")
+
+        settings.setAttribute(QWebEngineSettings.FullScreenSupportEnabled, True)
 
 
+        print("Initialising data storage management")
         #Data storage management - future plans to use this for history saving
         if profile_config["Name"] != "Ephemeral":
-            base_path = os.path.abspath(f"{srcSourceDir}/data/Browser_Data")
-            profile_path = os.path.join(base_path, "User_Profile")
-            cache_path = os.path.join(base_path, "User_Cache")
+            base_path = Path(os.path.abspath(f"{srcSourceDir}/data/Browser_Data"))
+            profile_path = Path(os.path.join(base_path, "User_Profile"))
+            cache_path = Path(os.path.join(base_path, "User_Cache"))
 
-            os.makedirs(profile_path, exist_ok=True)
-            os.makedirs(cache_path, exist_ok=True)
+            if not profile_path.is_dir():
+                profile_path.mkdir(parents=True, exist_ok=True)
+            if not cache_path.is_dir():
+                cache_path.mkdir(parents=True, exist_ok=True)
 
-            self.profile.setCachePath(cache_path)
-            self.profile.setPersistentStoragePath(profile_path)
+            self.profile.setCachePath(str(cache_path))
+            self.profile.setPersistentStoragePath(str(profile_path))
             self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
             self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
-
+            print("Data storage management initialised")
+        else:
+            print("Ephemeral profile selected, skipping storage location setup")
 
 
         #Update adblocker filters from easylist
+        print("Updating filters and enabling adblock interceptor")
         update_filters()
         #Adblock interceptor
         self.interceptor = AdInterceptor()
         self.profile.setUrlRequestInterceptor(self.interceptor)
-
+        print("Adblock interceptor initialised")
         
 
         #Initialise cookie jar (Cookie management)
+        print("Enabling cookie manager")
         self.cookieManager = CookieManager(self.profile, sensitivity, cookieAutoHandler)
         self.cookie_store = self.profile.cookieStore()
         self.cookie_store.loadAllCookies() 
         self.cookie_store.cookieAdded.connect(self.on_cookie_received)
         self.cookiedict = {} #Set up for later to store cookies for display in the accept/deny GUI
+        print("Enabled cookie manager")
 
 
+        print("Constructing menus")
         #Bar Management System
         self.container = QWidget()
         self.layout = QVBoxLayout(self.container)
@@ -1452,9 +1713,12 @@ class Browser(QMainWindow):
         with open (f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
             Colourdata = dict(json.load(f))
         self.colourpalette_btn, self.colourMenu = self.barManager.setup_colourPalette_button(Colourdata)
+
+        print("Menus built")
         
 
 
+        print("Selecting engines")
         #engine system
         with open (f"{srcSourceDir}/data/engineData.json", "r") as f:
             engineData = dict(json.load(f))
@@ -1473,9 +1737,10 @@ class Browser(QMainWindow):
         self.engine_btn = None
         self.engine_btn, self.browserMenu = self.barManager.setup_engine_button(self.engines)
         self.current_browser.urlChanged.connect((lambda qurl, browser=self.current_browser: self.on_url_changed(qurl, browser)))
+        print("Engines enabled")
 
 
-
+        print("Enabling additional GUI systems")
         #Cookie Menu GUI
         self.cookie_btn, self.cookieMenu = self.barManager.setup_cookie_button()
         self.cookieMenu.aboutToShow.connect(self.cookieGUI)
@@ -1486,11 +1751,15 @@ class Browser(QMainWindow):
 
         #final reset to styling to skip default selection
         self.SelectColourTheme(self.selectedprofile, Colourdata)
+        print("Enabled")
 
+        print("Deploying ad interceptor setup")
         #Deploy js code when webpage starts
-        EVAdInterceptor.deployPayload(browser=self.current_browser, profile=self.profile)
+        AdditionalAdHide.deployPayload(browser=self.current_browser, profile=self.profile)
+        print("Ad interceptor setup deployed")
 
 
+        print("Setting up keybind actions")
         #Actions list using commands
 
         #Quit command
@@ -1563,10 +1832,13 @@ class Browser(QMainWindow):
         tabmute_action.setShortcut(QKeySequence("Ctrl+M"))
         tabmute_action.triggered.connect(lambda ok: self.mute_tab(self.tabs.currentIndex()))
 
+        print("Keybind actions set up")
+
 
 
         #Miscellaneous additions
 
+        print("Setting additional variables")
         #Zoom
         self.zoomValue = 100
         self.tab_zoom_values = {} #Dictionary to store zoom values for each tab
@@ -1578,20 +1850,27 @@ class Browser(QMainWindow):
         #close Event helper
         self.bypassCloseEvent = False
 
+        print("Additional variables set")
 
 
+        print("Enabling additional background processes")
         # Register background processes
 
         # Dns fallback monitor
         if profileData["DNS-over-HTTPS"] != "Default":
             self.monitor = SecureDnsMonitor(profileData["Dns-Fallback"], doh_providers[profileData["DNS-over-HTTPS"]]["url"])
+        print("DNS monitor enabled")
 
         # Instantiate error overlay
         self.overlay = EmergencyOverlay(parent=self)
         self.overlay.hide()
         self.overlay.reboot_requested.connect(lambda: self.fullRestart(triggerCloseEvent = False, profile_config=self.profile_config.copy()))
+        print("GPU crash detection monitor enabled")
+
+        print("Background processes enabled")
 
 
+        print("Generating helper UI links")
         #New Expandable Repetition Button system for help display
         self.buttonInternals = {
             #Main homescreen for pressing the help button
@@ -1616,8 +1895,10 @@ class Browser(QMainWindow):
             #Past this point is non-clickable areas that appear at the bottom of the help index
             "Keybinds Help": [None, "Keybinds", "keybinds", 0]
         }
+        print("Helper UI links generated")
 
         #Run all browser startup triggers such as loading tabs from previous sessions.
+        print("Initialisation phase 1 complete, triggering startup functions")
         self.onStartup()
 
 
@@ -1651,6 +1932,31 @@ class Browser(QMainWindow):
         #Update all tabs to the correct appearance
         self.update_tab_icon(self.current_browser)
 
+    def handleFullScreenRequest(self, request):
+        #set req_url to what the site's name is
+        req_url = self.UrlManager.normalise_url(False, str(self.current_browser.url().toString()))
+        if request.toggleOn():
+            if self.additionalUIElements.WindowConfirmation("Fullscreen Request", f"Allow {req_url} to fullscreen?"):
+                request.accept()
+                self.nav_bar.hide()
+                self.bookmarks_bar.hide()
+                self.url_bar.hide()
+                self.status_bar.hide()
+
+                self.showFullScreen()
+            else:
+                request.reject()
+                print("Denying fullscreen request for " + req_url)
+
+        else:
+            self.showNormal()
+
+            self.nav_bar.show()
+            self.bookmarks_bar.show()
+            self.url_bar.show()
+            self.status_bar.show()
+
+
     def shutdown_Systems(self, restart=False):
             
         if saveTabsOnRestart:
@@ -1665,11 +1971,8 @@ class Browser(QMainWindow):
             saveData(self.currentProfileID, self.profile_config)
 
         self.restart_requested = restart
-        #Clear HTTP cache to avoid potential clientside injection attacks
-        self.profile.clearHttpCacheCompleted.connect(self.finish_shutdown)
-        self.profile.clearHttpCache()
-        #extra assurance shutdown command to avoid hanging on shutdown in case of httpcache clear failure
         QTimer.singleShot(3000, self.finish_shutdown)
+
 
     def fullRestart(self, triggerCloseEvent=True, profile_config=None):
         self.is_restarting = True
@@ -1691,9 +1994,50 @@ class Browser(QMainWindow):
         self._shutdown_finished = True
 
         if getattr(self, "pending_restart", False):
-            QProcess.startDetached(sys.executable, sys.argv)
+            if MSIX_REDIRECT:
+                QTimer.singleShot(500, self.restartWinApp)
+                return
+            else:
+                QProcess.startDetached(sys.executable, sys.argv)
 
         QApplication.quit()
+    
+    def restartWinApp(self):
+        os.startfile("mwrestart://restart")
+        QTimer.singleShot(100, QApplication.quit)
+    
+    #cookieRestart(dataValue["action"], dataValue["sites"])
+    def cookieRestart(self, action, sites):
+        print("Restarting for cookie updates")
+
+        self.bypassCloseEvent = True
+
+        # Save browser state
+        savetabs = {}
+        for tab in range(self.tabs.count()):
+            url = self.tabs.widget(tab).url().toString()
+            if not url.startswith("midnightwatch://"):
+                savetabs[url] = self.tabs.tabText(tab)
+
+        self.profile_config["saved_tabs"] = savetabs
+        saveData(self.currentProfileID, self.profile_config)
+
+        # Save profile handoff
+        with open(f"{srcSourceDir}/data/currentProfile.json", "w") as f:
+            json.dump(self.profile_config.copy(), f, indent=4)
+
+        # Save pending cookie job
+        with open(f"{srcSourceDir}/data/pendingCookieJob.json", "w") as f:
+            json.dump({
+                "action": action,
+                "sites": sites
+            }, f, indent=4)
+
+        # Reuse existing restart logic
+        self.pending_restart = True
+        self.shutdown_Systems()
+        
+
 
     def handleNewWindow(self, request):
         print("NEW WINDOW REQUEST")
@@ -2027,12 +2371,12 @@ class Browser(QMainWindow):
 
                 open_link = QAction("Open Link", self)
                 open_link.setObjectName("dynamic_web_action")
-                open_link.triggered.connect(lambda checked=False, req=request: self.load_url(QUrl(self.UrlManager.normalise_url(req.linkUrl().toString()))))
+                open_link.triggered.connect(lambda checked=False, req=request: self.load_url(QUrl(self.UrlManager.normalise_url(True, req.linkUrl().toString()))))
                 self.RContextMenu.addAction(open_link)
 
                 open_link_newtab = QAction("Open in New Tab", self)
                 open_link_newtab.setObjectName("dynamic_web_action")
-                open_link_newtab.triggered.connect(lambda checked=False, req=request: self.add_new_tab(qurl = QUrl(self.UrlManager.normalise_url(req.linkUrl().toString()))))
+                open_link_newtab.triggered.connect(lambda checked=False, req=request: self.add_new_tab(qurl = QUrl(self.UrlManager.normalise_url(True, req.linkUrl().toString()))))
                 self.RContextMenu.addAction(open_link_newtab)
 
                 #I might need to make this more secure!
@@ -2053,7 +2397,7 @@ class Browser(QMainWindow):
 
                 open_img_newtab = QAction("Open Image in New Tab", self)
                 open_img_newtab.setObjectName("dynamic_web_action")
-                open_img_newtab.triggered.connect(lambda checked=False, req=request: self.add_new_tab(qurl = QUrl(self.UrlManager.normalise_url(req.mediaUrl().toString()))))
+                open_img_newtab.triggered.connect(lambda checked=False, req=request: self.add_new_tab(qurl = QUrl(self.UrlManager.normalise_url(True, req.mediaUrl().toString()))))
                 self.RContextMenu.addAction(open_img_newtab)
 
                 save_img = QAction("Save Image")
@@ -2195,6 +2539,16 @@ class Browser(QMainWindow):
 
     '''Main Events Handling'''
 
+    def force_close_without_confirmation(self):
+        self.bypassCloseEvent = True
+        self.shutdown_Systems()
+        self.close()
+
+    def rebootBrowser(self, profileID):
+        with open(f"{srcSourceDir}/data/profileData.json","r") as f:
+            ProfileList = dict(json.load(f))
+        self.fullRestart(triggerCloseEvent=False, profile_config=ProfileList[profileID])
+
     def closeEvent(self, event):
         if not self.bypassCloseEvent and not self.pending_restart:
             if self.additionalUIElements.WindowConfirmation("Exit", "Close Midnight Watch?"):
@@ -2331,6 +2685,8 @@ class Browser(QMainWindow):
 
         browser.setUrl(qurl)
 
+        browser.page().fullScreenRequested.connect(self.handleFullScreenRequest)
+
         self.tab_zoom_values[browser] = 100
         browser.setZoomFactor(1.0)
         
@@ -2347,7 +2703,8 @@ class Browser(QMainWindow):
         browser.urlChanged.connect(lambda qurl, browser=browser: (self.update_tab_title(browser), self.on_url_changed(qurl, browser)))
         browser.loadStarted.connect(lambda: self.barManager.start_reload_animation())
         browser.loadFinished.connect(lambda ok, b=browser: (self.barManager.stop_reload_animation(), self.on_load_finished(browser)))
-        browser.titleChanged.connect(lambda title, browser=browser, i=i: (self.update_tab_title(browser, title), self.tabs.setTabToolTip(i, f"{title}\n{self.UrlManager.normalise_url(browser.url().toString())}")))
+        browser.titleChanged.connect(lambda title, browser=browser, i=i: (self.update_tab_title(browser, title), self.tabs.setTabToolTip(i, f"{title}\n{self.UrlManager.normalise_url(False, browser.url().toString())}")))
+        
 
 
         self.update_tab_sizes()
@@ -2364,7 +2721,7 @@ class Browser(QMainWindow):
         
         self.configure_bridge(qurl, browser)
 
-        clean = self.UrlManager.normalise_url(qurl.toString())
+        clean = self.UrlManager.normalise_url(True, qurl.toString())
         self.url_bar.setText(clean)
     
     def update_tab_icon(self, browser):
@@ -2419,7 +2776,7 @@ class Browser(QMainWindow):
         if current_browser:
             self.current_browser = current_browser
             raw_url = current_browser.url().toString()
-            clean_url = self.UrlManager.normalise_url(raw_url)
+            clean_url = self.UrlManager.normalise_url(True, raw_url)
             self.url_bar.setText(clean_url)
 
             # Restore zoom value for this tab using browser widget as key
@@ -2523,7 +2880,7 @@ class Browser(QMainWindow):
 
         # QUrl.fromUserInput automatically handles missing schemes (adds http://)
         # and checks if the string looks like a valid web address
-        url = QUrl.fromUserInput(UrlManager.normalise_url(True, input_text))
+        url = QUrl.fromUserInput(self.UrlManager.normalise_url(True, input_text))
 
         if url.isValid() and "." in input_text and " " not in input_text:
             # It's a valid URL (e.g., "google.com")
@@ -2535,7 +2892,7 @@ class Browser(QMainWindow):
 
         #update url bar to proper cleaned url text
         raw_url = self.current_browser.url().toString()
-        clean_url = self.UrlManager.normalise_url(raw_url)
+        clean_url = self.UrlManager.normalise_url(True, raw_url)
         self.url_bar.setText(clean_url)
 
     def htmlSearch(self, cQuery):
@@ -2545,7 +2902,7 @@ class Browser(QMainWindow):
         self.current_browser.setUrl(QUrl(UrlManager.normalise_url(True, search_url)))
         #update url bar to proper cleaned url text
         raw_url = self.current_browser.url().toString()
-        clean_url = self.UrlManager.normalise_url(raw_url)
+        clean_url = self.UrlManager.normalise_url(True, raw_url)
         self.url_bar.setText(clean_url)
 
     def configure_bridge(self, target_url, browser=None):
@@ -2587,13 +2944,13 @@ class Browser(QMainWindow):
         CosmeticBlocker.inject_css(browser)
         ScriptletBlocker.inject_scriptlets(browser)
         #extra case for final updates, catchall for url changes after loading a new page, finishing loading a different page, etc
-        clean_url = self.UrlManager.normalise_url(self.current_browser.url().toString())
+        clean_url = self.UrlManager.normalise_url(True, self.current_browser.url().toString())
         self.url_bar.setText(clean_url)
         pass
 
     def update_url_bar_buttons(self, url, browser):
         normalised_bookmarks = {}
-        current = self.UrlManager.normalise_url(self.current_browser.url().toString())
+        current = self.UrlManager.normalise_url(True, self.current_browser.url().toString())
 
         
         with open(f"{srcSourceDir}/data/colourProfiles.json", "r") as f:
@@ -2602,7 +2959,7 @@ class Browser(QMainWindow):
             bookmarkData = self.profile_config["saved_bookmarks"]
 
             #load bookmarks and compare against normalised
-            normalised_bookmarks = {bid: self.UrlManager.normalise_url(data["url"]) for bid, data in bookmarkData.items()}
+            normalised_bookmarks = {bid: self.UrlManager.normalise_url(True, data["url"]) for bid, data in bookmarkData.items()}
 
         except json.decoder.JSONDecodeError:
             print("Nothing in bookmarks folder, skipping.")
@@ -2634,7 +2991,7 @@ class Browser(QMainWindow):
             self.bookmark_button.setIcon(icon)
             self.bookmark_button.setToolTip("Add Bookmark")
             self.bookmark_button.triggered.connect(
-                lambda: self.add_bookmark(self.UrlManager.normalise_url(self.current_browser.url().toString()))
+                lambda: self.add_bookmark(self.UrlManager.normalise_url(True, self.current_browser.url().toString()))
             )
         
         self.url_bar.update()
@@ -2857,6 +3214,7 @@ class Browser(QMainWindow):
         with open (f"{srcSourceDir}/data/actionToggles.json", "w") as f:
             json.dump(dataedit, f, indent=4)
         self.profile_config["stored_data"]["Colour-Theme"] = str(profile)
+        self.settingsData["Colour-Theme"] = str(profile)
         saveData(self.currentProfileID, self.profile_config)
             
 
@@ -3160,7 +3518,6 @@ class Browser(QMainWindow):
         #actual logic - refresh cookie dictionary each time a new one is added
         self.cookieManager.on_cookie_added(cookie, self.current_browser.url().host())
         self.cookiedict = self.cookieManager.refresh_cookie_list()
-        self.cookieGUI()
 
 
     def cookieGUI(self):
@@ -3184,10 +3541,34 @@ class Browser(QMainWindow):
         self.cookieManager.refresh_cookie_list()
         self.cookieMenu.adjustSize()
         self.cookieGUI() 
-    
-    def cookieMassDelete(self):
-        self.cookie_store.deleteAllCookies()
 
+
+def processPendingCookieMaintenance(profile):
+    jobPath = Path(srcSourceDir) / "data" / "pendingCookieJob.json"
+
+    if not jobPath.exists():
+        return
+
+    try:
+        with open(jobPath) as f:
+            job = json.load(f)
+
+        cookiePath = Path(srcSourceDir) / "data" / "Browser_Data" / "User_Profile" / "Cookies"
+
+        print("Running pending cookie maintenance...")
+
+        if job["action"] == "targeted":
+            targetedCookieDelete(job["sites"], cookiePath)
+
+        elif job["action"] == "mass":
+            massCookieDelete(job["sites"], cookiePath)
+
+        jobPath.unlink(missing_ok=True)
+
+        print("Cookie maintenance complete.")
+    except Exception:
+        print("Cookie maintenance failed")
+        traceback.print_exc()
 
 
     
@@ -3198,6 +3579,17 @@ if __name__ == "__main__":
     
     # NOW create the application
     app = QApplication(sys.argv)
+    app.setApplicationName("Midnight Watch")
+    app.setApplicationDisplayName("Midnight Watch")
+
+
+    if MSIX_REDIRECT:
+        for arg in sys.argv:
+            if arg.lower().startswith("mwrestart://"):
+                break
+        print("Startup arguments:")
+        for arg in sys.argv:
+            print(arg)
 
     #Force fusion theming to keep designs and appearance consistent cross-platform
     app.setStyle("Fusion")
@@ -3228,9 +3620,20 @@ if __name__ == "__main__":
 
     if "DNS-over-HTTPS" in startupSettings:
         updateDoHSettings(startupSettings["DNS-over-HTTPS"], startupSettings)
+    
+    processPendingCookieMaintenance(selectedProfile)
 
-    # Create the browser
-    window = Browser(profile_config=selectedProfile)
+    # Create the browser. print doesn't even run yet
+    print("Creating Browser")
+    try:
+        window = Browser(profile_config=selectedProfile)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        input("Press Enter...")
+        raise
+
+    print("Browser created")
     GPUErrorMonitor.emergency_fired.connect(window.executeEmergency)
     window.show()
 

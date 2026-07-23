@@ -28,7 +28,7 @@
             --text-DeGoogler: "Enables all degoogler systems for the browser in an attempt to strip out all non-essential processing and remove telemetry data sending. <break2> Note this will have the side effect of disabling some useful features too, including the inbuilt phishing website alerts in default chromium. This setting is recommended only for people who really know their way around the internet. Enable at your own risk. <break2> This setting requires a restart to take effect.";
             --text-GPUSafeSystem: "This setting disables hardware acceleration for video decoding, which can improve stability on some systems with older or less compatible graphics hardware at the cost of increased CPU usage during video playback. <break2> Enable this if you experience frequent crashes, flickering screens, rendering failures, or freezes during video playback, especially on older computers. <break2> This setting requires a restart to take effect.";
             --text-cookieAutoHandler: "In the event that you'd rather leave all the cookie handling up to the browser, this system enables an automatic handler that adds cookies to your system that aren't flagged by the filters. <break2> Very simply, if it would appear in the selector UI, the browser adds it just in case. <break2> It is recommended that you use a higher degree of security for filters if this system is enabled (level 2 or above), as some tracking cookies may still slip through.";
-            --text-cookieMassDelete: "Press this button to erase every cookie present in the browser's storage. <break2> Note! This will remove ALL cookies, including pre-saved logins, site information, and everything every website remembers about you automatically until you sign in again! <break2> Use with caution!"
+            --text-cookieMassDelete: "This is a general button to show the cookie erasure menu, which lets you remove cookies from the internal storage of the browser. <break2> The provided text box upon clicking provides a type box and options for targeted and mass delete. Targeted delete removes only the cookies of any sites you list in the text box, while mass delete removes everything except any sites listed in the text box.<break2> If no text is entered, targeted delete will remove nothing while mass delete will remove everything. <break2> Text entered into the box must be formatted as the name of the site, with multiple sites separated by commas. <break2> Note! For any website's cookies, this will remove ALL cookies, including pre-saved logins, site information, and everything every website remembers about you automatically until you sign in again! <break2> Starting cookie erasure will forcefully restart the browser. Tabs will not be saved unless you've enabled tab saving across reboots. <break2> Use with caution!"
             }
         
         html, body {
@@ -818,6 +818,112 @@
         }
 
 
+        /* Cookie deletion confirmation popup */
+        .settings-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 15, 0.72);
+            backdrop-filter: blur(2px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1100;
+            padding: 24px;
+        }
+
+        .settings-overlay[hidden] {
+            display: none;
+        }
+
+        .cookie-popup {
+            width: min(460px, 100%);
+            background: linear-gradient(135deg, rgb(55, 55, 70), rgb(40, 40, 52));
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 18px;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+            padding: 24px;
+            color: white;
+            font-family: sans-serif;
+        }
+
+        .cookie-popup-title {
+            margin: 0 0 8px;
+            font-size: 1.4rem;
+            font-weight: 700;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.45);
+        }
+
+        .cookie-popup-subtext {
+            margin: 0 0 16px;
+            color: #d6d6e0;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+
+        .cookie-popup-input {
+            width: 100%;
+            min-height: 110px;
+            padding: 12px 14px;
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.06);
+            color: white;
+            resize: vertical;
+            box-sizing: border-box;
+            font-family: sans-serif;
+            font-size: 0.95rem;
+            outline: none;
+            margin-bottom: 18px;
+        }
+
+        .cookie-popup-input:focus {
+            border-color: #3f81ff;
+            box-shadow: 0 0 0 2px rgba(63,129,255,0.25);
+        }
+
+        .cookie-popup-input[data-invalid="true"] {
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 2px rgba(255,107,107,0.25);
+        }
+
+        .cookie-popup-actions {
+            display: flex;
+            justify-content: flex-start;
+            gap: 12px;
+        }
+
+        .cookie-popup-btn {
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.16);
+            cursor: pointer;
+            font-weight: 700;
+            font-family: sans-serif;
+            transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .cookie-popup-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .cookie-popup-btn.delete-btn {
+            background: #3f81ff;
+            color: white;
+        }
+
+        .cookie-popup-btn.delete-btn:hover {
+            background: #5c95ff;
+        }
+
+        .cookie-popup-btn.cancel-btn {
+            background: rgba(255,255,255,0.08);
+            color: #f0f0f0;
+        }
+
+        .cookie-popup-btn.cancel-btn:hover {
+            background: rgba(255,255,255,0.14);
+        }
+
         /* Apply Settings Bar */
         .apply-bar {
             position: fixed;
@@ -1501,6 +1607,19 @@
 
     </div>
 
+    <div id="cookieDeleteOverlay" class="settings-overlay" hidden>
+        <div class="cookie-popup" role="dialog" aria-modal="true" aria-labelledby="cookiePopupTitle">
+            <h3 id="cookiePopupTitle" class="cookie-popup-title">Delete all cookies?</h3>
+            <p class="cookie-popup-subtext">Select Nass Delete to delete all cookies indiscriminately. Enter URLs into the field to preserve specific sites, or press Targeted Delete to only delete the sites matching the URL. For formatting, please separate entered urls or names of sites with commas.</p>
+            <textarea id="cookieConfirmInput" class="cookie-popup-input" placeholder="Enter URLs here (OPTIONAL)"></textarea>
+            <div class="cookie-popup-actions">
+                <button type="button" class="cookie-popup-btn delete-btn" id="confirmCookieDelete" onclick="confirmCookieDeletion(false)">Mass Delete</button>
+                <button type="button" class="cookie-popup-btn delete-btn" id="confirmCookieDelete" onclick="confirmCookieDeletion(true)">Targeted Delete</button>
+                <button type="button" class="cookie-popup-btn cancel-btn" id="cancelCookieDelete" onclick="closeCookieDeletePopup()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="applyBar" class="apply-bar">
         <span class="apply-bar-text" id="applyBarText">You have unsaved changes</span>
         <div class="apply-bar-buttons">
@@ -1928,6 +2047,10 @@
                 
                 if (component.type === "button") {
                     component.addEventListener('click', () => {
+                        if (component.id === "cookieMassDelete") {
+                            openCookieDeletePopup();
+                            return;
+                        }
                         bridge_name.receiveData([String(data_ID), true]);
                     });
                 }
@@ -2136,6 +2259,42 @@
         });
 
         
+        function openCookieDeletePopup() {
+            const overlay = document.getElementById('cookieDeleteOverlay');
+            const input = document.getElementById('cookieConfirmInput');
+            if (!overlay || !input) return;
+
+            overlay.hidden = false;
+            input.value = '';
+            input.removeAttribute('data-invalid');
+            requestAnimationFrame(() => input.focus());
+        }
+
+        function closeCookieDeletePopup() {
+            const overlay = document.getElementById('cookieDeleteOverlay');
+            const input = document.getElementById('cookieConfirmInput');
+            if (!overlay || !input) return;
+
+            input.value = '';
+            input.removeAttribute('data-invalid');
+            overlay.hidden = true;
+        }
+
+        function confirmCookieDeletion(inverse = false) {
+            const input = document.getElementById('cookieConfirmInput');
+            const siteValue = input?.value?.trim() || '';
+
+            if (window.bridge) {
+                window.bridge.receiveData(['cookieMassDelete', {
+                    action: inverse ? 'targeted' : 'mass',
+                    sites: siteValue || null
+                }]);
+            }
+
+            closeCookieDeletePopup();
+            return;
+        }
+
         function showApplyBar(requiresRestart = false) {
             hasUnsavedChanges = true;
             const bar = document.getElementById('applyBar');

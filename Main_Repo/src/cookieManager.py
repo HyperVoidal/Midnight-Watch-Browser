@@ -199,6 +199,17 @@ class CookieManager:
             del self.pending_cookies[cookieID]
             print(f"Evaporated: {cookieID}")
 
+    def clear_all_cookies(self):
+        """Delete every tracked cookie from both the WebEngine store and the app's in-memory cache."""
+        if hasattr(self, "store") and self.store is not None:
+            try:
+                self.store.deleteAllCookies()
+            except Exception as exc:
+                print(f"Cookie mass delete failed in store: {exc}")
+
+        self.pending_cookies.clear()
+        print("Cleared all tracked cookies from the local cookie manager")
+
     def acceptCookie(self, cookieID):
         if cookieID in self.pending_cookies:
             del self.pending_cookies[cookieID]
